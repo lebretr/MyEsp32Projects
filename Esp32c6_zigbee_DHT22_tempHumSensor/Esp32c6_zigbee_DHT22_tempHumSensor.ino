@@ -3,10 +3,17 @@
 //################################################
 // ======================================================
 // To flash the board, in vs code: idf.py -p COM7 erase-flash
-// config pour flash dans vs code: UART esp32c6 (VIA ESP-PROG-2)
+// config to flash in vs code: UART esp32c6 (VIA ESP-PROG-2)
 // ======================================================
-// Partition: Zigbee ZCZR 4Mb with spiffs
-// Monitor baud: 115200
+// as Router (used with AC supply):
+// - Partition: Zigbee ZCZR 4Mb with spiffs
+// - Zigbee mode: Zigbee ZCZR
+// ======================================================
+// as End device (used with battery):
+// - Partition: Zigbee 4Mb with spiffs
+// - Zigbee mode: Zigbee ED
+// ======================================================
+// - Monitor baud: 115200
 // ======================================================
 
 #define DHT_READ_INTERVAL 10000  // 10 secondes
