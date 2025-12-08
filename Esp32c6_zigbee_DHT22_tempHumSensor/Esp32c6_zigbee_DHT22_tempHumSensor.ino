@@ -161,7 +161,7 @@ void setup() {
   zbTempSensor.setPowerSource(ZB_POWER_SOURCE_MAINS);  //ZB_POWER_SOURCE_BATTERY or ZB_POWER_SOURCE_MAINS
 
   // Set binding settings depending on the role
-  // if (ZIGBEE_ROLE == ZIGBEE_COORDINATOR or ZIGBEE_ROLE == ZIGBEE_ROUTER) {
+  // if (ZIGBEE_ROLE == ZIGBEE_COORDINATOR) {
   //   zbTempSensor.allowMultipleBinding(true);  // To allow binding multiple lights to the switch
   // } else {
   zbTempSensor.setManualBinding(true);  //Set manual binding to true, so binding is done on Home Assistant side
