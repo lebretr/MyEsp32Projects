@@ -16,11 +16,10 @@
 // - Monitor baud: 115200
 // ======================================================
 
-#define DHT_READ_INTERVAL 10000  // 10 secondes
-#define REPORT_INTERVAL 300000   // 5 minutes
+#define DHT_READ_INTERVAL 10 * 1000  // 10 secondes
+#define REPORT_INTERVAL 5 * 60 * 1000   // 5 minutes
 #define TEMP_DELTA 0.2           // Changement minimum de température
 #define HUM_DELTA 1.0            // Changement minimum d'humidité
-#define MAX_DHT_FAILURES 6       // Nombre d'échecs avant restart
 
 // Constante de conversion : différence en secondes entre 
 // l'époque Unix (1970) et l'époque Zigbee (2000)
@@ -43,6 +42,10 @@
 #include "Zigbee.h"
 /* Zigbee temperature sensor configuration */
 #define TEMP_SENSOR_ENDPOINT_NUMBER 10
+
+/* Zigbee binary sensor device configuration */
+#define BINARY_DEVICE_ENDPOINT_NUMBER 2
+
 uint8_t button = BOOT_PIN;  //BOOT button (not RESET!!!)
 
 // Optional Time cluster variables
@@ -50,22 +53,18 @@ struct tm timeinfo;
 struct tm *localTime;
 int32_t timezone;
 
-/* Zigbee OTA configuration */
-// #define OTA_UPGRADE_RUNNING_FILE_VERSION    0x01010100  // Increment this value when the running image is updated
-// #define OTA_UPGRADE_DOWNLOADED_FILE_VERSION 0x01010101  // Increment this value when the downloaded image is updated
-//#define OTA_UPGRADE_HW_VERSION              0x0101      // The hardware version, this can be used to differentiate between different hardware versions
-
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
+ZigbeeBinary zbBinary = ZigbeeBinary(BINARY_DEVICE_ENDPOINT_NUMBER);
 
-#include "DHT.h"
+#include <DHTesp.h>
 
 #define DHTPIN 23
-#define DHTTYPE DHT22
+#define DHTTYPE DHTesp::DHT22 
+DHTesp dht;
 
-DHT dht(DHTPIN, DHTTYPE);
-
-//#include "esp_task_wdt.h"
+float temperature=NULL;
+float humidity=NULL;
 
 /************************ Temp sensor *****************************/
 void fixZigbeeTime(struct tm &timeinfo) {
@@ -87,64 +86,89 @@ bool humChanged(float current, float previous) {
   return fabs(current - previous) >= HUM_DELTA;
 }
 
-static void temp_sensor_value_update(void *arg) {
+static void temp_sensor_read(void *arg) {
 
   const TickType_t xDelay = pdMS_TO_TICKS(100);
 
   // Variables pour timers non-bloquants
   static unsigned long lastDHTRead = 0;
-  static unsigned long previousExec = 0;
-  static float previousT = -40;
-  static float previousH = 0;
 
   for (;;) {
     unsigned long currentMillis = millis();
 
-    if (currentMillis - lastDHTRead >= 10000) {
-      lastDHTRead = currentMillis;
+    if (currentMillis - lastDHTRead >= DHT_READ_INTERVAL) {
 
-      // Le DHT22 renvoie au maximum une mesure toute les 2s
-      float h = dht.readHumidity();
-      // Lis le taux d'humidite en %
-      float t = dht.readTemperature();
-      // Lis la température en degré celsius
+      // Attendre l'intervalle minimum requis
+      delay(dht.getMinimumSamplingPeriod());
+      
+      // Lire les données du capteur
+      TempAndHumidity data = dht.getTempAndHumidity();
+  
+      // Vérifier le statut de la lecture
+      if (dht.getStatus() != 0) {
+        Serial.print("Erreur DHT: ");
+        Serial.println(dht.getStatusString());
+        vTaskDelay(pdMS_TO_TICKS(2000));
+      }else{
+        // Le DHT22 renvoie au maximum une mesure toute les 2s
+        // float t =data.temperature; // Lis le taux d'humidite en %
+        // float h = data.humidity; // Lis la température en degré celsius
 
-      zbTempSensor.setTemperature(t);
-      zbTempSensor.setHumidity(h);
-
-      static int nb_echec_reception = 0;
-      if (isnan(h) || isnan(t)) {
-        nb_echec_reception++;
-        Serial.printf("Échec réception: %d\n", nb_echec_reception);
-        if (nb_echec_reception > 6) {
-          Serial.println("Trop d'échecs, redémarrage...");
-          vTaskDelay(pdMS_TO_TICKS(1000));
-          ESP.restart();
-        }
-      } else {
-        nb_echec_reception = 0;  // Réinitialiser en cas de succès
-                                 // envoie toutes les 5min ou si la T° change ou si l'humidité change d'au moins 1%
-        if (
-          ((currentMillis - previousExec) > 5 * 60 * 1000)
-          || tempChanged(t, previousT)
-          || humChanged(h, previousH)) {
-          // Update temperature & humidity values in Temperature sensor EP
-          // zbTempSensor.setTemperature(t);
-          // zbTempSensor.setHumidity(h);
-          previousExec = currentMillis;
-          previousT = t;
-          previousH = h;
-
-          zbTempSensor.report();  // reports temperature and humidity values (if humidity sensor is not added, only temperature is reported)
-
-          timeinfo = zbTempSensor.getTime();
-          timezone = zbTempSensor.getTimezone();
-          fixZigbeeTime(timeinfo);
-          Serial.print(&timeinfo, "%Y/%m/%d %H:%M:%S Z");
-          Serial.print(timezone/3600);
-          Serial.printf(" - Humidité: %.1f%%  Température: %.1f°C\n", h, t);
+        static int nb_echec_reception = 0;
+        if (isnan(data.humidity) || isnan(data.temperature)) {
+          nb_echec_reception++;
+          Serial.printf("Échec réception: %d\n", nb_echec_reception);
+          vTaskDelay(pdMS_TO_TICKS(2000));
+          // if (nb_echec_reception > 6) {
+          //   Serial.println("Trop d'échecs, redémarrage...");
+          //   vTaskDelay(pdMS_TO_TICKS(1000));
+          //   ESP.restart();
+          // }
+        } else {
+          lastDHTRead = currentMillis;
+          nb_echec_reception = 0;
+          temperature=data.temperature;
+          humidity=data.humidity;
         }
       }
+    }
+    vTaskDelay(xDelay); // Préférer vTaskDelay à delay() + yield()
+  }
+}
+
+static void temp_zigbee_send(void *arg) {
+
+  const TickType_t xDelay = pdMS_TO_TICKS(1000);
+
+  // Variables pour timers non-bloquants
+  static unsigned long previousExec = 0;
+  static float previousT = 0;
+  static float previousH = 0;
+
+  for (;;) {
+    unsigned long currentMillis = millis();
+    if ( !isnan(temperature) && (
+          ((currentMillis - previousExec) > REPORT_INTERVAL)
+          || tempChanged(temperature, previousT)
+          || humChanged(humidity, previousH)
+        )
+      ) {
+
+      // Update temperature & humidity values in Temperature sensor EP
+      zbTempSensor.setTemperature(temperature);
+      zbTempSensor.setHumidity(humidity);
+      previousExec = currentMillis;
+      previousT = temperature;
+      previousH = humidity;
+
+      zbTempSensor.report();  // reports temperature and humidity values (if humidity sensor is not added, only temperature is reported)
+
+      timeinfo = zbTempSensor.getTime();
+      timezone = zbTempSensor.getTimezone();
+      fixZigbeeTime(timeinfo);
+      Serial.print(&timeinfo, "%Y/%m/%d %H:%M:%S Z");
+      Serial.print(timezone/3600);
+      Serial.printf(" - Humidité: %.1f%%  Température: %.1f°C\n", humidity, temperature);
     }
     vTaskDelay(xDelay);  // Préférer vTaskDelay à delay() + yield()
   }
@@ -157,13 +181,19 @@ void setup() {
   while (!Serial && millis() < 5000);  // Attendre le Serial max 5s
   Serial.println("\n=== Démarrage ESP32-C6 Zigbee Temp/Hum ===");
 
-  dht.begin();
+  // Initialiser le capteur avec le modèle DHT22 (compatible AM2302B)
+  dht.setup(DHTPIN, DHTTYPE);
+  
+  Serial.println("Capteur initialisé!");
+  Serial.print("Intervalle minimum entre lectures: ");
+  Serial.print(dht.getMinimumSamplingPeriod());
+  Serial.println("ms");
 
   // Init button switch
   pinMode(button, INPUT_PULLUP);
 
   // Optional: set Zigbee device name and model
-  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "C6-ZigbeeTemp&HumSensor");
+  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "Esp32-C6-01-ZigbeeTemp&HumSensor");
 
   zbTempSensor.setPowerSource(ZB_POWER_SOURCE_MAINS);  //ZB_POWER_SOURCE_BATTERY or ZB_POWER_SOURCE_MAINS
 
@@ -186,11 +216,15 @@ void setup() {
   // Optional: Time cluster configuration (default params, as this device will revieve time from coordinator)
   zbTempSensor.addTimeCluster();
 
-  // Add OTA client to the light bulb
-  //zbTempSensor.addOTAClient(OTA_UPGRADE_RUNNING_FILE_VERSION, OTA_UPGRADE_DOWNLOADED_FILE_VERSION, OTA_UPGRADE_HW_VERSION);
-
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
+
+  // Set up binary zone armed input (Security)
+  zbBinary.addBinaryInput();
+  //zbBinary.setBinaryInputApplication(BINARY_INPUT_APPLICATION_TYPE_SECURITY_ZONE_ARMED);
+  zbBinary.setBinaryInputDescription("Start");
+  
+  Zigbee.addEndpoint(&zbBinary);
 
   Serial.println("Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode
@@ -233,16 +267,31 @@ void setup() {
 
   // Start Temperature sensor reading task
   // Créer la tâche avec priorité et stack appropriés
-  BaseType_t taskCreated = xTaskCreate(
-    temp_sensor_value_update,
-    "temp_sensor",
+  BaseType_t taskReadCreated = xTaskCreate(
+    temp_sensor_read,
+    "temp_sensor_read",
     4096,  // Stack augmenté pour sécurité
     NULL,
     5,  // Priorité moyenne
     NULL);
 
-  if (taskCreated != pdPASS) {
-    Serial.println("ERREUR: Échec création tâche capteur!");
+  if (taskReadCreated != pdPASS) {
+    Serial.println("ERREUR: Échec création tâche lecture capteur!");
+    ESP.restart();
+  }
+
+  // Start Zigbee sending task
+  // Créer la tâche avec priorité et stack appropriés
+  BaseType_t taskSendCreated = xTaskCreate(
+    temp_zigbee_send,
+    "temp_zigbee_send",
+    4096,  // Stack augmenté pour sécurité
+    NULL,
+    5,  // Priorité moyenne
+    NULL);
+
+  if (taskSendCreated != pdPASS) {
+    Serial.println("ERREUR: Échec création tâche envoi zigbee!");
     ESP.restart();
   }
 
@@ -253,8 +302,6 @@ void setup() {
   // if min = 0, max = 10 and delta = 0, reporting is sent every 10 seconds regardless of temperature change
   //zbTempSensor.setReporting(0, 60, 0.1);
 
-  // Start Zigbee OTA client query, first request is within a minute and the next requests are sent every hour automatically
-  //zbTempSensor.requestOTAUpdate();
 
   Serial.println("=== Initialisation terminée ===\n");
 }
@@ -262,6 +309,8 @@ void setup() {
 void loop() {
 
   // Variables pour timers non-bloquants
+  static int startStatus = 0;
+  static unsigned long startTime = 0;
   static unsigned long lastButtonCheck = 0;
   static unsigned long buttonPressStart = 0;
   static bool buttonPressed = false;
@@ -270,6 +319,25 @@ void loop() {
   static const unsigned long SHORT_PRESS_MIN = 100;
 
   unsigned long currentMillis = millis();
+
+  //Envoi d'un ping (bascule false->true puis true->false)
+  //pour notifier d'un (re)démarrage de l'esp32
+  if(startStatus==0){
+    Serial.println("Envoi du statut started = true");
+
+    startStatus=1;
+    startTime=currentMillis;
+    
+    zbBinary.setBinaryInput(true);
+    zbBinary.reportBinaryInput();
+  }else if(startStatus==1 && currentMillis - startTime >= 5000){
+    Serial.println("remise à false du statut startSended");
+
+    startStatus = 2;
+    
+    zbBinary.setBinaryInput(false);
+    zbBinary.reportBinaryInput();
+  }
 
   // Gestion du bouton BOOT (non-bloquant)
   if (currentMillis - lastButtonCheck >= DEBOUNCE_DELAY) {  // Check toutes les 50ms
@@ -290,14 +358,13 @@ void loop() {
         Serial.println("Rapport manuel T° et Humidité");
         zbTempSensor.report();
       }
-      buttonPressed = false;
-    } else if (buttonState && buttonPressed) {
-      // Bouton maintenu - vérifier si factory reset
-      if ((currentMillis - buttonPressStart) >= FACTORY_RESET_DELAY) {
+      
+      if (pressDuration >= FACTORY_RESET_DELAY) {
         Serial.println("Factory reset Zigbee et redémarrage dans 1s...");
         delay(1000);
         Zigbee.factoryReset();
       }
+      buttonPressed = false;
     }
   }
 
