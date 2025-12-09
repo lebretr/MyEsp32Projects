@@ -58,12 +58,14 @@ int32_t timezone;
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
 
-#include "DHT.h"
+//#include "DHT.h"
+#include <DHTesp.h>
 
 #define DHTPIN 23
-#define DHTTYPE DHT22
+//#define DHTTYPE DHT22 
+DHTesp dht;
 
-DHT dht(DHTPIN, DHTTYPE);
+//DHT dht(DHTPIN, DHTTYPE);
 
 //#include "esp_task_wdt.h"
 
@@ -103,10 +105,26 @@ static void temp_sensor_value_update(void *arg) {
     if (currentMillis - lastDHTRead >= 10000) {
       lastDHTRead = currentMillis;
 
+      // Attendre l'intervalle minimum requis
+      delay(dht.getMinimumSamplingPeriod());
+      
+      // Lire les données du capteur
+      TempAndHumidity data = dht.getTempAndHumidity();
+  
+      // Vérifier le statut de la lecture
+      if (dht.getStatus() != 0) {
+        Serial.print("Erreur DHT: ");
+        Serial.println(dht.getStatusString());
+        delay(2000);
+        return;
+      }
+
       // Le DHT22 renvoie au maximum une mesure toute les 2s
-      float h = dht.readHumidity();
+      // float h = dht.readHumidity();
+      float h =data.temperature;
       // Lis le taux d'humidite en %
-      float t = dht.readTemperature();
+      // float t = dht.readTemperature();
+      float t = data.humidity;
       // Lis la température en degré celsius
 
       zbTempSensor.setTemperature(t);
@@ -157,7 +175,14 @@ void setup() {
   while (!Serial && millis() < 5000);  // Attendre le Serial max 5s
   Serial.println("\n=== Démarrage ESP32-C6 Zigbee Temp/Hum ===");
 
-  dht.begin();
+  // dht.begin();  
+  // Initialiser le capteur avec le modèle DHT22 (compatible AM2302B)
+  dht.setup(DHTPIN, DHTesp::DHT22);
+  
+  Serial.println("Capteur initialisé!");
+  Serial.print("Intervalle minimum entre lectures: ");
+  Serial.print(dht.getMinimumSamplingPeriod());
+  Serial.println("ms");
 
   // Init button switch
   pinMode(button, INPUT_PULLUP);
