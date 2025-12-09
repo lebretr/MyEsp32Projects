@@ -16,11 +16,10 @@
 // - Monitor baud: 115200
 // ======================================================
 
-#define DHT_READ_INTERVAL 10000  // 10 secondes
-#define REPORT_INTERVAL 300000   // 5 minutes
+#define DHT_READ_INTERVAL 10 * 1000  // 10 secondes
+#define REPORT_INTERVAL 5 * 60 * 1000   // 5 minutes
 #define TEMP_DELTA 0.2           // Changement minimum de température
 #define HUM_DELTA 1.0            // Changement minimum d'humidité
-#define MAX_DHT_FAILURES 6       // Nombre d'échecs avant restart
 
 // Constante de conversion : différence en secondes entre 
 // l'époque Unix (1970) et l'époque Zigbee (2000)
@@ -43,6 +42,10 @@
 #include "Zigbee.h"
 /* Zigbee temperature sensor configuration */
 #define TEMP_SENSOR_ENDPOINT_NUMBER 10
+
+/* Zigbee binary sensor device configuration */
+#define BINARY_DEVICE_ENDPOINT_NUMBER 2
+
 uint8_t button = BOOT_PIN;  //BOOT button (not RESET!!!)
 
 // Optional Time cluster variables
@@ -52,6 +55,7 @@ int32_t timezone;
 
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
+ZigbeeBinary zbBinary = ZigbeeBinary(BINARY_DEVICE_ENDPOINT_NUMBER);
 
 #include <DHTesp.h>
 
@@ -92,7 +96,7 @@ static void temp_sensor_read(void *arg) {
   for (;;) {
     unsigned long currentMillis = millis();
 
-    if (currentMillis - lastDHTRead >= 10000) {
+    if (currentMillis - lastDHTRead >= DHT_READ_INTERVAL) {
 
       // Attendre l'intervalle minimum requis
       delay(dht.getMinimumSamplingPeriod());
@@ -104,29 +108,28 @@ static void temp_sensor_read(void *arg) {
       if (dht.getStatus() != 0) {
         Serial.print("Erreur DHT: ");
         Serial.println(dht.getStatusString());
-        delay(2000);
-        //return;
-      }
+        vTaskDelay(pdMS_TO_TICKS(2000));
+      }else{
+        // Le DHT22 renvoie au maximum une mesure toute les 2s
+        // float t =data.temperature; // Lis le taux d'humidite en %
+        // float h = data.humidity; // Lis la température en degré celsius
 
-      lastDHTRead = currentMillis;
-
-      // Le DHT22 renvoie au maximum une mesure toute les 2s
-      float t =data.temperature; // Lis le taux d'humidite en %
-      float h = data.humidity; // Lis la température en degré celsius
-
-      static int nb_echec_reception = 0;
-      if (isnan(h) || isnan(t)) {
-        nb_echec_reception++;
-        Serial.printf("Échec réception: %d\n", nb_echec_reception);
-        if (nb_echec_reception > 6) {
-          Serial.println("Trop d'échecs, redémarrage...");
-          vTaskDelay(pdMS_TO_TICKS(1000));
-          ESP.restart();
+        static int nb_echec_reception = 0;
+        if (isnan(data.humidity) || isnan(data.temperature)) {
+          nb_echec_reception++;
+          Serial.printf("Échec réception: %d\n", nb_echec_reception);
+          vTaskDelay(pdMS_TO_TICKS(2000));
+          // if (nb_echec_reception > 6) {
+          //   Serial.println("Trop d'échecs, redémarrage...");
+          //   vTaskDelay(pdMS_TO_TICKS(1000));
+          //   ESP.restart();
+          // }
+        } else {
+          lastDHTRead = currentMillis;
+          nb_echec_reception = 0;
+          temperature=data.temperature;
+          humidity=data.humidity;
         }
-      } else {
-        nb_echec_reception = 0;
-        temperature=t;
-        humidity=h;
       }
     }
     vTaskDelay(xDelay); // Préférer vTaskDelay à delay() + yield()
@@ -145,7 +148,7 @@ static void temp_zigbee_send(void *arg) {
   for (;;) {
     unsigned long currentMillis = millis();
     if ( !isnan(temperature) && (
-          ((currentMillis - previousExec) > 5 * 60 * 1000)
+          ((currentMillis - previousExec) > REPORT_INTERVAL)
           || tempChanged(temperature, previousT)
           || humChanged(humidity, previousH)
         )
@@ -190,7 +193,7 @@ void setup() {
   pinMode(button, INPUT_PULLUP);
 
   // Optional: set Zigbee device name and model
-  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "C6-ZigbeeTemp&HumSensor");
+  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "Esp32-C6-01-ZigbeeTemp&HumSensor");
 
   zbTempSensor.setPowerSource(ZB_POWER_SOURCE_MAINS);  //ZB_POWER_SOURCE_BATTERY or ZB_POWER_SOURCE_MAINS
 
@@ -215,6 +218,13 @@ void setup() {
 
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
+
+  // Set up binary zone armed input (Security)
+  zbBinary.addBinaryInput();
+  //zbBinary.setBinaryInputApplication(BINARY_INPUT_APPLICATION_TYPE_SECURITY_ZONE_ARMED);
+  zbBinary.setBinaryInputDescription("Start");
+  
+  Zigbee.addEndpoint(&zbBinary);
 
   Serial.println("Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode
@@ -292,12 +302,15 @@ void setup() {
   // if min = 0, max = 10 and delta = 0, reporting is sent every 10 seconds regardless of temperature change
   //zbTempSensor.setReporting(0, 60, 0.1);
 
+
   Serial.println("=== Initialisation terminée ===\n");
 }
 
 void loop() {
 
   // Variables pour timers non-bloquants
+  static int startStatus = 0;
+  static unsigned long startTime = 0;
   static unsigned long lastButtonCheck = 0;
   static unsigned long buttonPressStart = 0;
   static bool buttonPressed = false;
@@ -306,6 +319,25 @@ void loop() {
   static const unsigned long SHORT_PRESS_MIN = 100;
 
   unsigned long currentMillis = millis();
+
+  //Envoi d'un ping (bascule false->true puis true->false)
+  //pour notifier d'un (re)démarrage de l'esp32
+  if(startStatus==0){
+    Serial.println("Envoi du statut started = true");
+
+    startStatus=1;
+    startTime=currentMillis;
+    
+    zbBinary.setBinaryInput(true);
+    zbBinary.reportBinaryInput();
+  }else if(startStatus==1 && currentMillis - startTime >= 5000){
+    Serial.println("remise à false du statut startSended");
+
+    startStatus = 2;
+    
+    zbBinary.setBinaryInput(false);
+    zbBinary.reportBinaryInput();
+  }
 
   // Gestion du bouton BOOT (non-bloquant)
   if (currentMillis - lastButtonCheck >= DEBOUNCE_DELAY) {  // Check toutes les 50ms
@@ -326,14 +358,13 @@ void loop() {
         Serial.println("Rapport manuel T° et Humidité");
         zbTempSensor.report();
       }
-      buttonPressed = false;
-    } else if (buttonState && buttonPressed) {
-      // Bouton maintenu - vérifier si factory reset
-      if ((currentMillis - buttonPressStart) >= FACTORY_RESET_DELAY) {
+      
+      if (pressDuration >= FACTORY_RESET_DELAY) {
         Serial.println("Factory reset Zigbee et redémarrage dans 1s...");
         delay(1000);
         Zigbee.factoryReset();
       }
+      buttonPressed = false;
     }
   }
 
