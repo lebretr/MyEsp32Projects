@@ -46,6 +46,47 @@
 /* Zigbee binary sensor device configuration */
 #define BINARY_DEVICE_ENDPOINT_NUMBER 2
 
+#define CUSTOM_CLUSTER_ENDPOINT_NUMBER 5
+
+#define CUSTOM_CLUSTER_ID 0xFC00  // Plage manufacturer-specific
+#define ATTR_START_TIME   0x0000
+#define CUSTOM_ATTR_START_TIME 0x8000  // Attribut personnalisé
+
+
+class ZigbeeCustomDevice : public ZigbeeEP {
+private:
+  uint32_t _startTime;
+
+public:
+  ZigbeeCustomDevice(uint8_t endpoint) : ZigbeeEP(endpoint) {
+    _device_id = ESP_ZB_HA_CUSTOM_ATTR_DEVICE_ID;  // Custom Sensor device ID
+    _startTime = 0;
+    
+    // Créer le cluster Temperature
+    // _cluster_id = CUSTOM_CLUSTER_ID;  // Temperature Measurement cluster
+  }
+  
+  void setStartTime(uint32_t time) {
+    _startTime = time;
+  }
+  
+  uint32_t getStartTime() {
+    return _startTime;
+  }
+  
+  // Appelé lors de la configuration Zigbee
+  void setAttributeList()  {
+    // Attribut température standard (requis)
+    int16_t temp = 0;
+    addAttribute(0x0000, ZCL_INT16S_ATTRIBUTE_TYPE, ZCL_READ_ONLY_ATTRIBUTE, (void*)&temp);
+    
+    // Attribut startTime personnalisé
+    addAttribute(0x8000, ZCL_UTC_TIME_ATTRIBUTE_TYPE, ZCL_READ_WRITE_ATTRIBUTE, (void*)&_startTime);
+  }
+};
+
+ZigbeeCustomDevice customDevice(1);
+
 uint8_t button = BOOT_PIN;  //BOOT button (not RESET!!!)
 
 // Optional Time cluster variables
@@ -174,12 +215,41 @@ static void temp_zigbee_send(void *arg) {
   }
 }
 
+
+/************************ Custom sensor *****************************/
+esp_err_t create_custom_cluster_with_start_time(uint8_t endpoint)
+{
+    // Créer un cluster vide personnalisé
+    esp_zb_attribute_list_t *custom_cluster = 
+        esp_zb_zcl_attr_list_create(CUSTOM_CLUSTER_ID);
+    
+    // Ajouter startTime
+    uint32_t start_time = random(1000);
+    esp_zb_cluster_add_attr(custom_cluster,
+                           CUSTOM_CLUSTER_ID,
+                           ATTR_START_TIME,
+                           ESP_ZB_ZCL_ATTR_TYPE_UTC_TIME,
+                           ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
+                           &start_time);
+    
+    // Ajouter au cluster list
+    esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
+    esp_zb_cluster_list_add_custom_cluster(cluster_list, custom_cluster,
+                                           ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+    
+    return ESP_OK;
+}
+
 /********************* Arduino functions **************************/
 void setup() {
   Serial.begin(115200);
 
   while (!Serial && millis() < 5000);  // Attendre le Serial max 5s
   Serial.println("\n=== Démarrage ESP32-C6 Zigbee Temp/Hum ===");
+
+  randomSeed(analogRead(0));
+  Serial.print("analogRead(0): ");
+  Serial.println(analogRead(0));
 
   // Initialiser le capteur avec le modèle DHT22 (compatible AM2302B)
   dht.setup(DHTPIN, DHTTYPE);
@@ -193,7 +263,7 @@ void setup() {
   pinMode(button, INPUT_PULLUP);
 
   // Optional: set Zigbee device name and model
-  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "Esp32-C6-01-ZigbeeTemp&HumSensor");
+  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "Esp32-C6-01-Temp&Hum");
 
   zbTempSensor.setPowerSource(ZB_POWER_SOURCE_MAINS);  //ZB_POWER_SOURCE_BATTERY or ZB_POWER_SOURCE_MAINS
 
@@ -216,6 +286,17 @@ void setup() {
   // Optional: Time cluster configuration (default params, as this device will revieve time from coordinator)
   zbTempSensor.addTimeCluster();
 
+  // Ajouter l'attribut startTime au cluster Temperature (0x0402)
+  // uint32_t startTime = 0;
+  // zbTempSensor.addAttribute(
+  //   CUSTOM_ATTR_START_TIME,           // ID attribut
+  //   ZCL_UTC_TIME_ATTRIBUTE_TYPE,      // Type UTC Time
+  //   ZCL_READ_WRITE_ATTRIBUTE,         // Lecture/écriture
+  //   (void*)&startTime                 // Pointeur vers la valeur
+  // );
+
+  Zigbee.addEndpoint(&customDevice);
+
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
 
@@ -225,6 +306,8 @@ void setup() {
   zbBinary.setBinaryInputDescription("Start");
   
   Zigbee.addEndpoint(&zbBinary);
+
+  create_custom_cluster_with_start_time(CUSTOM_CLUSTER_ENDPOINT_NUMBER);
 
   Serial.println("Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode
@@ -323,6 +406,9 @@ void loop() {
   //Envoi d'un ping (bascule false->true puis true->false)
   //pour notifier d'un (re)démarrage de l'esp32
   if(startStatus==0){
+    long randNumber = random(300);
+    Serial.println(randNumber);
+
     Serial.println("Envoi du statut started = true");
 
     startStatus=1;
