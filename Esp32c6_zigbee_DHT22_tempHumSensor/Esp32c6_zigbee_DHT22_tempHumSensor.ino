@@ -1,15 +1,20 @@
 //################################################
-//# installer la librairie "DHT Sensor" d’Adafruit
+//# Dependances:
+//# - esp32 by Espressif Systems
+//# - DHT sensor library for ESPx by beegee_tokyo
 //################################################
 // ======================================================
 // To flash the board, in vs code: idf.py -p COM7 erase-flash
 // config to flash in vs code: UART esp32c6 (VIA ESP-PROG-2)
 // ======================================================
-// as Router (used with AC supply):
+// To flash the board, with Arduino IDE:
+// Tool-> Erase all flash before sketch upload: Enable
+// ======================================================
+// Board used as Router (used with AC supply):
 // - Partition: Zigbee ZCZR 4Mb with spiffs
 // - Zigbee mode: Zigbee ZCZR
 // ======================================================
-// as End device (used with battery):
+// Board used as End device (used with battery):
 // - Partition: Zigbee 4Mb with spiffs
 // - Zigbee mode: Zigbee ED
 // ======================================================
@@ -21,9 +26,9 @@
 #define TEMP_DELTA 0.2           // Changement minimum de température
 #define HUM_DELTA 1.0            // Changement minimum d'humidité
 
-// Constante de conversion : différence en secondes entre 
-// l'époque Unix (1970) et l'époque Zigbee (2000)
-#define ZIGBEE_EPOCH_OFFSET 946684800  // secondes entre 1970 et 2000
+// Conversion constant: difference in seconds between 
+// the Unix era (1970) and the Zigbee era (2000)
+#define ZIGBEE_EPOCH_OFFSET 946684800  // secondes between 1970 and 2000
 
 //#ifndef ZIGBEE_MODE_ED
 //#error "Zigbee end device mode is not selected in Tools->Zigbee mode"
@@ -40,17 +45,12 @@
 
 
 #include "Zigbee.h"
-// #include "ZigbeeNumber.h"
-/* Zigbee temperature sensor configuration */
+
 #define TEMP_SENSOR_ENDPOINT_NUMBER 10
 
 #define ANALOG_DEVICE_ENDPOINT_NUMBER 1
-#define ANALOG_DEVICE_ENDPOINT_NUMBER_2 3
 
-/* Zigbee binary sensor device configuration */
-#define BINARY_DEVICE_ENDPOINT_NUMBER 2
-
-uint8_t button = BOOT_PIN;  //BOOT button (not RESET!!!)
+uint8_t button = BOOT_PIN;  //BOOT button (not RESET button!!!)
 
 // Optional Time cluster variables
 struct tm timeinfo;
@@ -59,11 +59,9 @@ int32_t timezone;
 
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
-ZigbeeBinary zbBinary = ZigbeeBinary(BINARY_DEVICE_ENDPOINT_NUMBER);
-
 ZigbeeAnalog zbAnalogDevice = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
-ZigbeeAnalog zbAnalogDevice_2 = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER_2);
+ZigbeeAnalog zbAnalogDevice_2 = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
 #include <DHTesp.h>
 
@@ -76,13 +74,13 @@ float humidity=NULL;
 
 /************************ Temp sensor *****************************/
 void fixZigbeeTime(struct tm &timeinfo) {
-  // Convertir la structure tm en timestamp
+  // Convert tm structure to timestamp
   time_t zigbeeTime = mktime(&timeinfo);
   
-  // Ajouter le décalage pour obtenir le temps Unix correct
+  // Add the offset to get the correct Unix time
   time_t correctTime = zigbeeTime + ZIGBEE_EPOCH_OFFSET;
   
-  // Reconvertir en structure tm avec la date corrigée
+  // Convert back to tm structure with the corrected date
   localtime_r(&correctTime, &timeinfo);
 }
 
@@ -98,16 +96,16 @@ static void temp_sensor_read(void *arg) {
 
   const TickType_t xDelay = pdMS_TO_TICKS(100);
 
-  // Variables pour timers non-bloquants
+  // Variables for non-blocking timers
   static unsigned long lastDHTRead = 0;
 
-  static int nb_echec_reception = 0;
+  static int recepion_failed_nb = 0;
 
   for (;;) {
     unsigned long currentMillis = millis();
 
     
-    // if (nb_echec_reception > 10) {
+    // if (recepion_failed_nb > 10) {
     //   Serial.println("Trop d'échecs, redémarrage...");
     //   vTaskDelay(pdMS_TO_TICKS(1000));
     //   ESP.restart();
@@ -118,39 +116,36 @@ static void temp_sensor_read(void *arg) {
       // Attendre l'intervalle minimum requis
       delay(dht.getMinimumSamplingPeriod());
       
-      // Lire les données du capteur
+      // Read data from sensor
       TempAndHumidity data = dht.getTempAndHumidity();
   
-      // Vérifier le statut de la lecture
+      // check the reading status
       if (dht.getStatus() != 0) {
-        nb_echec_reception++;
+        recepion_failed_nb++;
         Serial.print("Erreur DHT: ");
         Serial.println(dht.getStatusString());
 
-        zbAnalogDevice_2.setAnalogInput(nb_echec_reception);
+        zbAnalogDevice_2.setAnalogInput(recepion_failed_nb);
         zbAnalogDevice_2.reportAnalogInput();
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(2000)); // The DHT22 returns a maximum of one measurement every 2 seconds
       }else{
-        // Le DHT22 renvoie au maximum une mesure toute les 2s
-        // float t =data.temperature; // Lis le taux d'humidite en %
-        // float h = data.humidity; // Lis la température en degré celsius
-
+        
         if (isnan(data.humidity) || isnan(data.temperature)) {
-          nb_echec_reception++;
-          Serial.printf("Échec réception: %d\n", nb_echec_reception);
+          recepion_failed_nb++;
+          Serial.printf("Échec réception: %d\n", recepion_failed_nb);
 
-          zbAnalogDevice_2.setAnalogInput(500000 + nb_echec_reception);
+          zbAnalogDevice_2.setAnalogInput(500000 + recepion_failed_nb);
           zbAnalogDevice_2.reportAnalogInput();
 
-          vTaskDelay(pdMS_TO_TICKS(2000));
+          vTaskDelay(pdMS_TO_TICKS(2000)); // The DHT22 returns a maximum of one measurement every 2 seconds
         } else {
           lastDHTRead = currentMillis;
 
-          if(nb_echec_reception!=0){
-            nb_echec_reception = 0;
+          if(recepion_failed_nb!=0){
+            recepion_failed_nb = 0;
 
-            zbAnalogDevice_2.setAnalogInput(nb_echec_reception);
+            zbAnalogDevice_2.setAnalogInput(recepion_failed_nb);
             zbAnalogDevice_2.reportAnalogInput();
           }
 
@@ -159,7 +154,7 @@ static void temp_sensor_read(void *arg) {
         }
       }
     }
-    vTaskDelay(xDelay); // Préférer vTaskDelay à delay() + yield()
+    vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
   }
 }
 
@@ -167,7 +162,6 @@ static void temp_zigbee_send(void *arg) {
 
   const TickType_t xDelay = pdMS_TO_TICKS(1000);
 
-  // Variables pour timers non-bloquants
   static unsigned long previousExec = 0;
   static float previousT = 0;
   static float previousH = 0;
@@ -197,7 +191,7 @@ static void temp_zigbee_send(void *arg) {
       Serial.print(timezone/3600);
       Serial.printf(" - Humidité: %.1f%%  Température: %.1f°C\n", humidity, temperature);
     }
-    vTaskDelay(xDelay);  // Préférer vTaskDelay à delay() + yield()
+    vTaskDelay(xDelay);  // Prefer vTaskDelay to delay() + yield()
   }
 }
 
@@ -205,18 +199,14 @@ static void temp_zigbee_send(void *arg) {
 void setup() {
   Serial.begin(115200);
 
-  while (!Serial && millis() < 5000);  // Attendre le Serial max 5s
-  Serial.println("\n=== Démarrage ESP32-C6 Zigbee Temp/Hum ===");
+  while (!Serial && millis() < 5000);  // Wait Serial max 5s
+  Serial.println("\n=== ESP32-C6 Zigbee Temp/Hum startup ===");
 
-  // randomSeed(analogRead(0));
-  // Serial.print("analogRead(0): ");
-  // Serial.println(analogRead(0));
-
-  // Initialiser le capteur avec le modèle DHT22 (compatible AM2302B)
+  // Init sensor with DHT22 model (compatibility with AM2302B)
   dht.setup(DHTPIN, DHTTYPE);
   
-  Serial.println("Capteur initialisé!");
-  Serial.print("Intervalle minimum entre lectures: ");
+  Serial.println("Sensor initialised!");
+  Serial.print("Delay between 2 reads: ");
   Serial.print(dht.getMinimumSamplingPeriod());
   Serial.println("ms");
 
@@ -250,53 +240,46 @@ void setup() {
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
 
+  // Zigbee Sensor to track restart (crash, ...)
   zbAnalogDevice.addAnalogInput();
   zbAnalogDevice.setAnalogInputApplication(ESP_ZB_ZCL_AI_COUNT_UNITLESS_COUNT);
   zbAnalogDevice.setAnalogInputDescription("pid");
   zbAnalogDevice.setAnalogInputResolution(1);
-  // zbAnalogDevice.setAnalogOutputMinMax(0, 10000);  //-10000 to 10000 RPM
 
   Zigbee.addEndpoint(&zbAnalogDevice);
 
+  // Zigbee Sensor to track DHT error
   zbAnalogDevice_2.addAnalogInput();
   zbAnalogDevice_2.setAnalogInputApplication(ESP_ZB_ZCL_AI_COUNT_UNITLESS_COUNT);
   zbAnalogDevice_2.setAnalogInputDescription("error");
   zbAnalogDevice_2.setAnalogInputResolution(1);
-  // zbAnalogDevice_2.setAnalogOutputMinMax(0, 10000);  //-10000 to 10000 RPM
 
   Zigbee.addEndpoint(&zbAnalogDevice_2);
-
-  // Set up binary zone armed input (Security)
-  zbBinary.addBinaryInput();
-  //zbBinary.setBinaryInputApplication(BINARY_INPUT_APPLICATION_TYPE_SECURITY_ZONE_ARMED);
-  zbBinary.setBinaryInputDescription("Start");
-  
-  Zigbee.addEndpoint(&zbBinary);
 
   Serial.println("Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode
   if (!Zigbee.begin(ZIGBEE_ROLE)) {
-    Serial.println("ERREUR: Échec démarrage Zigbee!");
-    Serial.println("Redémarrage dans 5s...");
+    Serial.println("ERREUR: Zigbee start failed!");
+    Serial.println("Reboot in 5s...");
     delay(5000);
     ESP.restart();
   }
 
-  Serial.println("Zigbee démarré avec succès!");
-  Serial.print("Connexion au réseau");
+  Serial.println("Zigbee started with success!");
+  Serial.print("Connecting to network");
 
   uint32_t timeout = millis() + 30000;  // Timeout 30s
   while (!Zigbee.connected()) {
     if (millis() > timeout) {
-      Serial.println("\nTimeout connexion réseau!");
-      Serial.println("Redémarrage dans 5s...");
+      Serial.println("\nTimeout network connection!");
+      Serial.println("Reboot in 5s...");
       delay(5000);
       ESP.restart();
     }
     Serial.print(".");
     delay(100);
   }
-  Serial.println("\nConnecté au réseau Zigbee!");
+  Serial.println("\Connected to Zigbee network!");
 
   // Lecture et affichage de l'heure
   timeinfo = zbTempSensor.getTime();
@@ -304,16 +287,15 @@ void setup() {
 
   fixZigbeeTime(timeinfo);
 
-  Serial.println("Heure UTC:");
+  Serial.println("Heure (UTC):");
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 
   time_t local = mktime(&timeinfo) + timezone;
   localTime = localtime(&local);
-  Serial.println("Heure locale:");
+  Serial.println("Heure (local):");
   Serial.println(localTime, "%A, %B %d %Y %H:%M:%S");
 
   // Start Temperature sensor reading task
-  // Créer la tâche avec priorité et stack appropriés
   BaseType_t taskReadCreated = xTaskCreate(
     temp_sensor_read,
     "temp_sensor_read",
@@ -328,7 +310,6 @@ void setup() {
   }
 
   // Start Zigbee sending task
-  // Créer la tâche avec priorité et stack appropriés
   BaseType_t taskSendCreated = xTaskCreate(
     temp_zigbee_send,
     "temp_zigbee_send",
@@ -350,14 +331,12 @@ void setup() {
   //zbTempSensor.setReporting(0, 60, 0.1);
 
 
-  Serial.println("=== Initialisation terminée ===\n");
+  Serial.println("=== Initialization complete ===\n");
 }
 
 void loop() {
 
-  // Variables pour timers non-bloquants
   static int startStatus = 0;
-  static unsigned long startTime = 0;
   static unsigned long lastButtonCheck = 0;
   static unsigned long buttonPressStart = 0;
   static bool buttonPressed = false;
@@ -381,39 +360,29 @@ void loop() {
     zbAnalogDevice_2.reportAnalogInput();
 
     startStatus=1;
-    startTime=currentMillis;
-    
-    zbBinary.setBinaryInput(true);
-    zbBinary.reportBinaryInput();
-  }else if(startStatus==1 && currentMillis - startTime >= 5000){
-    Serial.println("remise à false du statut startSended");
-
-    startStatus = 2;
-    
-    zbBinary.setBinaryInput(false);
-    zbBinary.reportBinaryInput();
   }
 
-  // Gestion du bouton BOOT (non-bloquant)
-  if (currentMillis - lastButtonCheck >= DEBOUNCE_DELAY) {  // Check toutes les 50ms
+  // BOOT button management (non-blocking)
+  if (currentMillis - lastButtonCheck >= DEBOUNCE_DELAY) {  // Check every 50ms
     lastButtonCheck = currentMillis;
 
     bool buttonState = (digitalRead(button) == LOW);
 
     if (buttonState && !buttonPressed) {
-      // Début de l'appui
+      // Start of button press
       buttonPressed = true;
       buttonPressStart = currentMillis;
     } else if (!buttonState && buttonPressed) {
-      // Bouton relâché
+      // Button released
       unsigned long pressDuration = currentMillis - buttonPressStart;
 
       if (pressDuration >= SHORT_PRESS_MIN && pressDuration < FACTORY_RESET_DELAY) {
-        // Appui court : rapport manuel
+        // short press : manual report
         Serial.println("Rapport manuel T° et Humidité");
         zbTempSensor.report();
       }
       
+      // long press: reset and reboot
       if (pressDuration >= FACTORY_RESET_DELAY) {
         Serial.println("Factory reset Zigbee et redémarrage dans 1s...");
         delay(1000);
@@ -423,5 +392,5 @@ void loop() {
     }
   }
 
-  delay(50);  // Réduit à 50ms pour meilleure réactivité
+  delay(50);
 }
