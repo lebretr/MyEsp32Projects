@@ -40,8 +40,12 @@
 
 
 #include "Zigbee.h"
+// #include "ZigbeeNumber.h"
 /* Zigbee temperature sensor configuration */
 #define TEMP_SENSOR_ENDPOINT_NUMBER 10
+
+#define ANALOG_DEVICE_ENDPOINT_NUMBER 1
+#define ANALOG_DEVICE_ENDPOINT_NUMBER_2 3
 
 /* Zigbee binary sensor device configuration */
 #define BINARY_DEVICE_ENDPOINT_NUMBER 2
@@ -56,6 +60,10 @@ int32_t timezone;
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
 ZigbeeBinary zbBinary = ZigbeeBinary(BINARY_DEVICE_ENDPOINT_NUMBER);
+
+ZigbeeAnalog zbAnalogDevice = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
+
+ZigbeeAnalog zbAnalogDevice_2 = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER_2);
 
 #include <DHTesp.h>
 
@@ -93,8 +101,17 @@ static void temp_sensor_read(void *arg) {
   // Variables pour timers non-bloquants
   static unsigned long lastDHTRead = 0;
 
+  static int nb_echec_reception = 0;
+
   for (;;) {
     unsigned long currentMillis = millis();
+
+    
+    // if (nb_echec_reception > 10) {
+    //   Serial.println("Trop d'échecs, redémarrage...");
+    //   vTaskDelay(pdMS_TO_TICKS(1000));
+    //   ESP.restart();
+    // }
 
     if (currentMillis - lastDHTRead >= DHT_READ_INTERVAL) {
 
@@ -106,27 +123,37 @@ static void temp_sensor_read(void *arg) {
   
       // Vérifier le statut de la lecture
       if (dht.getStatus() != 0) {
+        nb_echec_reception++;
         Serial.print("Erreur DHT: ");
         Serial.println(dht.getStatusString());
+
+        zbAnalogDevice_2.setAnalogInput(nb_echec_reception);
+        zbAnalogDevice_2.reportAnalogInput();
+
         vTaskDelay(pdMS_TO_TICKS(2000));
       }else{
         // Le DHT22 renvoie au maximum une mesure toute les 2s
         // float t =data.temperature; // Lis le taux d'humidite en %
         // float h = data.humidity; // Lis la température en degré celsius
 
-        static int nb_echec_reception = 0;
         if (isnan(data.humidity) || isnan(data.temperature)) {
           nb_echec_reception++;
           Serial.printf("Échec réception: %d\n", nb_echec_reception);
+
+          zbAnalogDevice_2.setAnalogInput(500000 + nb_echec_reception);
+          zbAnalogDevice_2.reportAnalogInput();
+
           vTaskDelay(pdMS_TO_TICKS(2000));
-          // if (nb_echec_reception > 6) {
-          //   Serial.println("Trop d'échecs, redémarrage...");
-          //   vTaskDelay(pdMS_TO_TICKS(1000));
-          //   ESP.restart();
-          // }
         } else {
           lastDHTRead = currentMillis;
-          nb_echec_reception = 0;
+
+          if(nb_echec_reception!=0){
+            nb_echec_reception = 0;
+
+            zbAnalogDevice_2.setAnalogInput(nb_echec_reception);
+            zbAnalogDevice_2.reportAnalogInput();
+          }
+
           temperature=data.temperature;
           humidity=data.humidity;
         }
@@ -181,6 +208,10 @@ void setup() {
   while (!Serial && millis() < 5000);  // Attendre le Serial max 5s
   Serial.println("\n=== Démarrage ESP32-C6 Zigbee Temp/Hum ===");
 
+  // randomSeed(analogRead(0));
+  // Serial.print("analogRead(0): ");
+  // Serial.println(analogRead(0));
+
   // Initialiser le capteur avec le modèle DHT22 (compatible AM2302B)
   dht.setup(DHTPIN, DHTTYPE);
   
@@ -218,6 +249,22 @@ void setup() {
 
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
+
+  zbAnalogDevice.addAnalogInput();
+  zbAnalogDevice.setAnalogInputApplication(ESP_ZB_ZCL_AI_COUNT_UNITLESS_COUNT);
+  zbAnalogDevice.setAnalogInputDescription("pid");
+  zbAnalogDevice.setAnalogInputResolution(1);
+  // zbAnalogDevice.setAnalogOutputMinMax(0, 10000);  //-10000 to 10000 RPM
+
+  Zigbee.addEndpoint(&zbAnalogDevice);
+
+  zbAnalogDevice_2.addAnalogInput();
+  zbAnalogDevice_2.setAnalogInputApplication(ESP_ZB_ZCL_AI_COUNT_UNITLESS_COUNT);
+  zbAnalogDevice_2.setAnalogInputDescription("error");
+  zbAnalogDevice_2.setAnalogInputResolution(1);
+  // zbAnalogDevice_2.setAnalogOutputMinMax(0, 10000);  //-10000 to 10000 RPM
+
+  Zigbee.addEndpoint(&zbAnalogDevice_2);
 
   // Set up binary zone armed input (Security)
   zbBinary.addBinaryInput();
@@ -324,6 +371,14 @@ void loop() {
   //pour notifier d'un (re)démarrage de l'esp32
   if(startStatus==0){
     Serial.println("Envoi du statut started = true");
+  
+    float randNumber = fabs(esp_random()); 
+    Serial.println(randNumber);
+    zbAnalogDevice.setAnalogInput(randNumber);
+    zbAnalogDevice.reportAnalogInput();
+
+    zbAnalogDevice_2.setAnalogInput(0);
+    zbAnalogDevice_2.reportAnalogInput();
 
     startStatus=1;
     startTime=currentMillis;
