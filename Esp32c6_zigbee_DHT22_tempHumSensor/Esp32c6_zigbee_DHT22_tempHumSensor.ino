@@ -40,8 +40,11 @@
 
 
 #include "Zigbee.h"
+// #include "ZigbeeNumber.h"
 /* Zigbee temperature sensor configuration */
 #define TEMP_SENSOR_ENDPOINT_NUMBER 10
+
+#define ANALOG_DEVICE_ENDPOINT_NUMBER 1
 
 /* Zigbee binary sensor device configuration */
 #define BINARY_DEVICE_ENDPOINT_NUMBER 2
@@ -56,6 +59,8 @@ int32_t timezone;
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
 ZigbeeBinary zbBinary = ZigbeeBinary(BINARY_DEVICE_ENDPOINT_NUMBER);
+
+ZigbeeAnalog zbAnalogDevice = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
 #include <DHTesp.h>
 
@@ -181,6 +186,10 @@ void setup() {
   while (!Serial && millis() < 5000);  // Attendre le Serial max 5s
   Serial.println("\n=== Démarrage ESP32-C6 Zigbee Temp/Hum ===");
 
+  // randomSeed(analogRead(0));
+  // Serial.print("analogRead(0): ");
+  // Serial.println(analogRead(0));
+
   // Initialiser le capteur avec le modèle DHT22 (compatible AM2302B)
   dht.setup(DHTPIN, DHTTYPE);
   
@@ -218,6 +227,14 @@ void setup() {
 
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
+
+  zbAnalogDevice.addAnalogInput();
+  zbAnalogDevice.setAnalogInputApplication(ESP_ZB_ZCL_AI_COUNT_UNITLESS_COUNT);
+  zbAnalogDevice.setAnalogInputDescription("pid");
+  zbAnalogDevice.setAnalogInputResolution(1);
+  // zbAnalogDevice.setAnalogOutputMinMax(0, 10000);  //-10000 to 10000 RPM
+
+  Zigbee.addEndpoint(&zbAnalogDevice);
 
   // Set up binary zone armed input (Security)
   zbBinary.addBinaryInput();
@@ -324,6 +341,11 @@ void loop() {
   //pour notifier d'un (re)démarrage de l'esp32
   if(startStatus==0){
     Serial.println("Envoi du statut started = true");
+  
+    float randNumber = fabs(esp_random()); 
+    Serial.println(randNumber);
+    zbAnalogDevice.setAnalogInput(randNumber);
+    zbAnalogDevice.reportAnalogInput();
 
     startStatus=1;
     startTime=currentMillis;
