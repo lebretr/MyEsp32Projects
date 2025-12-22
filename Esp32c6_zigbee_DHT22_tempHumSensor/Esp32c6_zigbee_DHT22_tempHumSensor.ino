@@ -341,7 +341,6 @@ void setup() {
 
 
   ESP_LOGI(TAG, "=== Initialization complete ===\n");
-  // Serial.println("=== Initialization complete ===\n");
 }
 
 void loop() {
