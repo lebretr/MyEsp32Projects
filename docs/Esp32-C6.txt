@@ -1,0 +1,157 @@
+ Source: https://www.studiopieters.nl/esp32-c6-pinout/
+
+
+# ESP32-C6 Pinout - GPIO Fundamentals
+
+This dev board exposes 24 GPIO's, many of which are fully multifunctional. You'll find support for everything from analog inputs and PWM to
+UART, SPI, and I2C.
+
+## Onboard WS2812 RGB LED
+
+The addressable RGB LED is connected to GPIO8.
+
+Applications:
+Use it to indicate Wi-Fi connection status, show HomeKit pairing state, or create colorful animations.
+
+Control it using FastLED or Adafruit_NeoPixel.
+
+## ADC - Analog to Digital Converter
+
+The ESP32-C6 includes a 12-bit ADC with 8 channels:
+
+ADC Channels:
+
+· ADC1: GPIO0, GPIO1, GPIO2, GPIO3, GPIO4, GPIO5, GPIO6
+. ADC2: GPIO9
+
+Perfect for reading sensors, sliders, or analog voltage levels.
+
+## PWM (Pulse Width Modulation)
+
+PWM is available on almost all GPIO's.
+
+Use cases: dimming LED's, controlling motors, tone generation, etc.
+
+## I2C & SPI Communication
+
+### I2C
+
+I2C is software-configurable. Typical setup:
+
+· SDA - GPIO8
+· SCL - GPIO9
+
+Use Wire.begin(SDA, SCL); to reconfigure.
+
+### SPI
+
+Also fully software-assignable. Example config:
+
+. MOSI - GPIO5
+
+. MISO - GPIO4
+
+. SCLK - GPIO6
+
+· CS - GPIO7
+
+
+## UART and USB Communication
+
+### UART
+
+The USB-to-serial interface (CH343) connects to:
+
+. TXD - GPIO17
+
+. RXD - GPIO18
+
+Used for programming and debugging via the UART USB-C port.
+
+### USB (Native)
+
+The second USB-C port uses native USB support via:
+
+. USB D+ - GPIO19
+
+· USB D- - GPIO20
+
+Ideal for HID devices, USB CDC, or firmware updates.
+
+
+
+# ESP32-C6 GPIO Quick Reference Table
+
+	Function 		ADC 		PWM		Notes
+
+0 	ADC1_CHO 		Yes 		Yes 	Boot strapping pin
+
+1 	ADC1_CH1 		Yes 		Yes
+
+2 	ADC1_CH2 		Yes 		Yes
+
+3 	ADC1_CH3 		Yes 		Yes
+
+4 	SPI MISO 		ADC1_CH4 	Yes 	Can be used as SDA (I2C)
+
+5 	SPI MOSI 		ADC1_CH5	Yes 	Can be used as SCL (I2C)
+
+6 	SPI CLK 		ADC1_CH6	Yes
+
+7 	SPI CS 			No 			Yes
+
+8 	RGB LED / SDA	No 			Yes 	Onboard NeoPixel
+
+9 	SCL 			ADC2_CH1 	Yes 	I2C SCL, second ADC
+
+12 	GPIO 			No 			Yes
+
+13 	GPIO 			No 			Yes
+
+15 	GPIO 			No 			Yes
+
+16 	GPIO 			No 			Yes
+
+17 	UART TXD 		No 			Yes 	UART via CH343
+
+18 	UART RXD 		No 			Yes 	UART via CH343
+
+19 	USB D+ 			No 			Yes		Native USB
+
+20 	USB D- 			No 			Yes 	Native USB
+
+21 	GPIO 			No 			Yes
+
+22 	GPIO 			No 			Yes
+
+23 	GPIO 			No 			Yes
+
+
+
+# Best Practices and Common Mistakes
+
+. Avoid using GPIOO for output during boot - it's a strapping pin.
+. GPIO8 is tied to the onboard NeoPixel - don't repurpose unless disabled.
+· Always debounce buttons in software.
+. Pull-up or pull-down resistors may be needed for floating inputs.
+. Don't overload GPIOs: max ~12mA sink/source.
+. Use the UART USB-C for flashing; USB USB-C for native device communication.
+
+# How to Program the ESP32-C6
+## Development Environments
+
+· Arduino IDE - (ESP32-C6 support via board manager)
+. PlatformIO - Best for multi-project workspaces
+. ESP-IDF - Espressif's official low-level SDK
+
+## Programming Pins
+
+Function 	PIN 		Description
+
+TXDO		GPIO17 		Serial output to PC
+
+RXD0		GPIO18 		Serial input from PC
+
+IO0 		GPIO0 		BOOT mode when pulled LOW
+
+EN 			EN pin 		Reset the ESP32-C6

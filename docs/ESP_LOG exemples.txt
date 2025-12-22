@@ -1,0 +1,115 @@
+#Type				Format		Exemple
+#int 				%d 			%d
+#unsigned int 		%u 			%u
+#long 				%ld 		%ld
+#unsigned long 		%lu 		%lu
+#long long 			%lld 		%lld
+#float 				%.Xf 		%.2f , (double)nombre_float
+#double 			%.Xf 		%.2f
+#char 				%c 			%c
+#char* / string 	%s 			%s
+#bool 				%d ou %s 	%d ou avec condition
+#pointer 			%p 			%p
+#hexadécimal 		%X ou %x 	0x%X
+#size_t 			%zu 		%zu
+
+
+cpp#include "esp_log.h"
+
+static const char* TAG = "EXEMPLE";
+
+void app_main() {
+    // Entiers
+    int entier = 42;
+    ESP_LOGI(TAG, "int: %d", entier);
+    
+    unsigned int entier_non_signe = 255;
+    ESP_LOGI(TAG, "unsigned int: %u", entier_non_signe);
+    
+    // Entiers courts
+    short court = -128;
+    ESP_LOGI(TAG, "short: %d", court);
+    
+    unsigned short court_non_signe = 65535;
+    ESP_LOGI(TAG, "unsigned short: %u", court_non_signe);
+    
+    // Entiers longs
+    long entier_long = 123456789L;
+    ESP_LOGI(TAG, "long: %ld", entier_long);
+    
+    unsigned long entier_long_non_signe = 4294967295UL;
+    ESP_LOGI(TAG, "unsigned long: %lu", entier_long_non_signe);
+    
+    // Entiers très longs (64 bits)
+    long long tres_long = 9223372036854775807LL;
+    ESP_LOGI(TAG, "long long: %lld", tres_long);
+    
+    unsigned long long tres_long_non_signe = 18446744073709551615ULL;
+    ESP_LOGI(TAG, "unsigned long long: %llu", tres_long_non_signe);
+    
+    // Flottants
+    float nombre_float = 3.14159;
+    ESP_LOGI(TAG, "float: %.2f", (double)nombre_float);
+    ESP_LOGI(TAG, "float (6 décimales): %.6f", (double)nombre_float);
+    
+    double nombre_double = 2.718281828;
+    ESP_LOGI(TAG, "double: %.9f", nombre_double);
+    
+    // Notation scientifique
+    float grand_nombre = 123456.789;
+    ESP_LOGI(TAG, "notation scientifique: %e", (double)grand_nombre);
+    
+    // Caractères
+    char caractere = 'A';
+    ESP_LOGI(TAG, "char: %c", caractere);
+    
+    // Chaînes de caractères
+    char* chaine = "Bonjour";
+    ESP_LOGI(TAG, "string (char*): %s", chaine);
+    
+    const char* chaine_const = "ESP32";
+    ESP_LOGI(TAG, "const char*: %s", chaine_const);
+    
+    // Tableaux de caractères
+    char buffer[20] = "Message";
+    ESP_LOGI(TAG, "char[]: %s", buffer);
+    
+    // Booléens
+    bool valeur_bool = true;
+    ESP_LOGI(TAG, "bool: %d", valeur_bool);  // 1 pour true, 0 pour false
+    ESP_LOGI(TAG, "bool (texte): %s", valeur_bool ? "true" : "false");
+    
+    // Pointeurs (adresses mémoire)
+    int* pointeur = &entier;
+    ESP_LOGI(TAG, "pointeur: %p", (void*)pointeur);
+    
+    // Hexadécimal
+    int hex_val = 255;
+    ESP_LOGI(TAG, "hexadécimal: 0x%X", hex_val);  // 0xFF
+    ESP_LOGI(TAG, "hexadécimal (minuscule): 0x%x", hex_val);  // 0xff
+    
+    // Octal
+    int octal_val = 64;
+    ESP_LOGI(TAG, "octal: %o", octal_val);
+    
+    // Binaire (nécessite conversion manuelle)
+    uint8_t binaire = 0b10101010;
+    ESP_LOGI(TAG, "binaire: 0x%02X (hex) = %d (dec)", binaire, binaire);
+    
+    // Types ESP32 spécifiques
+    size_t taille = 1024;
+    ESP_LOGI(TAG, "size_t: %zu", taille);
+    
+    uint8_t byte = 0xFF;
+    ESP_LOGI(TAG, "uint8_t: %u ou 0x%02X", byte, byte);
+    
+    uint16_t word = 0xABCD;
+    ESP_LOGI(TAG, "uint16_t: %u ou 0x%04X", word, word);
+    
+    uint32_t dword = 0x12345678;
+    ESP_LOGI(TAG, "uint32_t: %u ou 0x%08X", dword, dword);
+    
+    // Combinaisons multiples
+    ESP_LOGI(TAG, "Multi: int=%d, float=%.2f, string=%s", 
+             entier, (double)nombre_float, chaine);
+}
