@@ -1,5 +1,5 @@
 //################################################
-//# Dependences:
+//# Dependencies:
 //# - esp32 by Espressif Systems
 //# - DHT sensor library for ESPx by beegee_tokyo
 //################################################
