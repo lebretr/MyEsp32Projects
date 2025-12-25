@@ -21,14 +21,13 @@
 // - Monitor baud: 115200
 // ======================================================
 
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+#include "esp_log.h"
 
 #define DHT_READ_INTERVAL 10 * 1000  // 10 secondes
 #define REPORT_INTERVAL 5 * 60 * 1000   // 5 minutes
 #define TEMP_DELTA 0.2           // Changement minimum de température
 #define HUM_DELTA 1.0            // Changement minimum d'humidité
-
-//#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
-#include "esp_log.h"
 
 // Conversion constant: difference in seconds between 
 // the Unix era (1970) and the Zigbee era (2000)
@@ -56,11 +55,6 @@
 
 uint8_t button = BOOT_PIN;  //BOOT button (not RESET button!!!)
 
-// Optional Time cluster variables
-struct tm timeinfo;
-struct tm *localTime;
-int32_t timezone;
-
 ZigbeeTempSensor zbTempSensor = ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER);
 
 ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
@@ -79,26 +73,8 @@ float humidity=NULL;
 static const char *TAG = "Main";
 
 /************************ Temp sensor *****************************/
-void fixZigbeeTime(struct tm &timeinfo) {
-  // Convert tm structure to timestamp
-  time_t zigbeeTime = mktime(&timeinfo);
-  
-  // Add the offset to get the correct Unix time
-  time_t correctTime = zigbeeTime + ZIGBEE_EPOCH_OFFSET;
-  
-  // Convert back to tm structure with the corrected date
-  localtime_r(&correctTime, &timeinfo);
-}
 
 float myfAbs(float x) {
-    // return (x < 0) ? -x : x;
-    // if(x<0){
-    //   ESP_LOGI(TAG, "value negative: %f", (double)x);
-    //   // return -x;
-    // }else{
-    //   ESP_LOGI(TAG, "value positive: %f", (double)x);
-    //   // return x;
-    // }    
     uint32_t i = *((uint32_t*)&x);
     i &= 0x7FFFFFFF;  // Masque le bit de signe
     return *((float*)&i);
@@ -114,19 +90,18 @@ bool humChanged(float current, float previous) {
 
 static void temp_sensor_read(void *arg) {
 
-  const TickType_t xDelay = pdMS_TO_TICKS(100);
+  static const TickType_t xDelay = pdMS_TO_TICKS(2000);
 
   // Variables for non-blocking timers
   static unsigned long lastDHTRead = 0;
 
-  static int recepion_failed_nb = 0;
+  static int reception_failed_nb = 0;
 
   for (;;) {
     unsigned long currentMillis = millis();
 
     
-    // if (recepion_failed_nb > 10) {
-    //   Serial.println("Trop d'échecs, redémarrage...");
+    // if (reception_failed_nb > 10) {
     //   ESP_LOGE(TAG, "Trop d'échecs, redémarrage...");
     //   vTaskDelay(pdMS_TO_TICKS(1000));
     //   ESP.restart();
@@ -142,7 +117,7 @@ static void temp_sensor_read(void *arg) {
   
       // check the reading status
       if (dht.getStatus() != 0) {
-        recepion_failed_nb++;
+        reception_failed_nb++;
         ESP_LOGE(TAG, "Erreur DHT: %s", dht.getStatusString());
 
         zbAnalogDeviceError.setAnalogInput(101);
@@ -152,8 +127,8 @@ static void temp_sensor_read(void *arg) {
       }else{
         
         if (isnan(data.humidity) || isnan(data.temperature)) {
-          recepion_failed_nb++;
-          ESP_LOGE(TAG, "Échec réception: %d\n", recepion_failed_nb);
+          reception_failed_nb++;
+          ESP_LOGE(TAG, "Échec réception: %d\n", reception_failed_nb);
 
           zbAnalogDeviceError.setAnalogInput(500001);
           zbAnalogDeviceError.reportAnalogInput();
@@ -162,8 +137,8 @@ static void temp_sensor_read(void *arg) {
         } else {
           lastDHTRead = currentMillis;
 
-          if(recepion_failed_nb!=0){
-            recepion_failed_nb = 0;
+          if(reception_failed_nb!=0){
+            reception_failed_nb = 0;
 
             zbAnalogDeviceError.setAnalogInput(0);
             zbAnalogDeviceError.reportAnalogInput();
@@ -180,7 +155,7 @@ static void temp_sensor_read(void *arg) {
 
 static void temp_zigbee_send(void *arg) {
 
-  const TickType_t xDelay = pdMS_TO_TICKS(1000);
+  static const TickType_t xDelay = pdMS_TO_TICKS(2000);
 
   static unsigned long previousExec = 0;
   static float previousT = 0;
@@ -204,10 +179,7 @@ static void temp_zigbee_send(void *arg) {
 
       zbTempSensor.report();  // reports temperature and humidity values (if humidity sensor is not added, only temperature is reported)
 
-      timeinfo = zbTempSensor.getTime();
-      timezone = zbTempSensor.getTimezone();
-      fixZigbeeTime(timeinfo);
-      ESP_LOGI(TAG, "Humidité: %.1f%%  Température: %.1f°C\n", (double)humidity, (double)temperature);
+      ESP_LOGI(TAG, "Humidité: %.1f%%  Température: %.1f°C", (double)humidity, (double)temperature);
     }
     vTaskDelay(xDelay);  // Prefer vTaskDelay to delay() + yield()
   }
@@ -217,8 +189,13 @@ static void temp_zigbee_send(void *arg) {
 void setup() {
   Serial.begin(115200);
 
+  // esp_log_level_set("*", ESP_LOG_VERBOSE);
+  // esp_log_level_set(TAG, ESP_LOG_VERBOSE);
+
   while (!Serial && millis() < 5000);  // Wait Serial max 5s
-  ESP_LOGI(TAG, "\n=== ESP32-C6 Zigbee Temp/Hum startup ===");
+  ESP_LOGI(TAG, " ");
+  ESP_LOGI(TAG, " ");
+  ESP_LOGI(TAG, "=== ESP32-C6 Zigbee Temp/Hum startup ===");
 
   // Init sensor with DHT22 model (compatibility with AM2302B)
   pinMode(DHTPIN, INPUT);
@@ -296,13 +273,7 @@ void setup() {
     }
     delay(100);
   }
-  ESP_LOGI(TAG, "\Connected to Zigbee network!");
-
-  // Lecture et affichage de l'heure
-  timeinfo = zbTempSensor.getTime();
-  timezone = zbTempSensor.getTimezone();
-
-  fixZigbeeTime(timeinfo);
+  ESP_LOGI(TAG, "Connected to Zigbee network!");
 
   // Start Temperature sensor reading task
   BaseType_t taskReadCreated = xTaskCreate(
@@ -349,9 +320,10 @@ void loop() {
   static unsigned long lastButtonCheck = 0;
   static unsigned long buttonPressStart = 0;
   static bool buttonPressed = false;
-  static const unsigned long DEBOUNCE_DELAY = 50;  // Délai anti-rebond
-  static const unsigned long FACTORY_RESET_DELAY = 3000;
-  static const unsigned long SHORT_PRESS_MIN = 100;
+  static const unsigned long DEBOUNCE_DELAY = 100;  // Délai anti-rebond
+  static const unsigned long FACTORY_RESET_DELAY = 3000; //=3s
+  static const unsigned long SHORT_PRESS_MIN = 2*DEBOUNCE_DELAY; //=200ms
+  static const TickType_t xDelay = pdMS_TO_TICKS(2*DEBOUNCE_DELAY); //=200ms
 
   unsigned long currentMillis = millis();
 
@@ -399,5 +371,5 @@ void loop() {
     }
   }
 
-  delay(50);
+  delay(xDelay); // old value: 50
 }
