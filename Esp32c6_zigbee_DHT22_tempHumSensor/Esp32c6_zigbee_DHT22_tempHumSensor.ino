@@ -1,33 +1,36 @@
-//################################################
-//# Dependencies:
-//# - esp32 by Espressif Systems
-//# - DHT sensor library for ESPx by beegee_tokyo
-//################################################
-// ======================================================
-// To flash reset the board, in vs code: idf.py -p COM7 erase-flash
-// config to flash in vs code: UART esp32c6 (VIA ESP-PROG-2)
-// ======================================================
-// To flash reset the board, with Arduino IDE:
-// Tool-> Erase all flash before sketch upload: Enable
-// ======================================================
-// Board used as Router (used with AC supply):
-// - Partition: Zigbee ZCZR 4Mb with spiffs
-// - Zigbee mode: Zigbee ZCZR
-// ======================================================
-// Board used as End device (used with battery):
-// - Partition: Zigbee 4Mb with spiffs
-// - Zigbee mode: Zigbee ED
-// ======================================================
-// - Monitor baud: 115200
-// ======================================================
+//╔═══════════════════════════════════════════════════════════╗
+//║ Dependencies:                                             ║
+//║ * Boards Manager:                                         ║
+//║   - esp32 by Espressif Systems v3.3.5                     ║
+//║ * Libraries:                                              ║
+//║   - DHT sensor library for ESPx by beegee_tokyo v1.19     ║
+//╠═══════════════════════════════════════════════════════════╣
+//║ To flash reset the board, in vs code:                     ║
+//║     idf.py -p COM7 erase-flash                            ║
+//║ config to flash in vs code:                               ║
+//║     UART esp32c6 (VIA ESP-PROG-2)                         ║
+//╠═──────────────────────────────────────────────────────────╣
+//║ To flash reset the board, with Arduino IDE:               ║
+//║ Tool-> Erase all flash before sketch upload: Enable       ║
+//╠═──────────────────────────────────────────────────────────╣
+//║ Board used as Router (used with AC supply):               ║
+//║ - Partition: Zigbee ZCZR 4Mb with spiffs                  ║
+//║ - Zigbee mode: Zigbee ZCZR                                ║
+//╠═──────────────────────────────────────────────────────────╣
+//║ Board used as End device (used with battery):             ║
+//║ - Partition: Zigbee 4Mb with spiffs                       ║
+//║ - Zigbee mode: Zigbee ED                                  ║
+//╠═──────────────────────────────────────────────────────────╣
+//║ - Monitor baud: 115200                                    ║
+//╚═══════════════════════════════════════════════════════════╝
 
 #define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 #include "esp_log.h"
 
 #define DHT_READ_INTERVAL 10 * 1000  // 10 secondes
-#define REPORT_INTERVAL 5 * 60 * 1000   // 5 minutes
+#define REPORT_INTERVAL 30 * 60 * 1000   // 30 minutes
 #define TEMP_DELTA 0.2           // Changement minimum de température
-#define HUM_DELTA 1.0            // Changement minimum d'humidité
+#define HUM_DELTA 0.5            // Changement minimum d'humidité
 
 // Conversion constant: difference in seconds between 
 // the Unix era (1970) and the Zigbee era (2000)
@@ -201,7 +204,6 @@ void setup() {
   pinMode(DHTPIN, INPUT);
   dht.setup(DHTPIN, DHTTYPE);
 
-  
   ESP_LOGI(TAG, "Sensor initialised!");
   ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dht.getMinimumSamplingPeriod());
 
@@ -309,7 +311,6 @@ void setup() {
   // if min = 0 and max = 10, reporting is sent every 10 seconds or temperature changes by delta
   // if min = 0, max = 10 and delta = 0, reporting is sent every 10 seconds regardless of temperature change
   //zbTempSensor.setReporting(0, 60, 0.1);
-
 
   ESP_LOGI(TAG, "=== Initialization complete ===\n");
 }
