@@ -12,15 +12,16 @@
 //║ - GPIO0, GPIO1, GPIO2, GPIO3                              ║
 //╚═══════════════════════════════════════════════════════════╝
 
-#define DHTPIN_1 23
-// #define DHTPIN_2 22
-// #define DHTPIN_3 21
-// #define DHTPIN_4 20
-// #define DHTPIN_5 11
-// #define DHTPIN_6 10
+#define NUMBER_OF_DHT 6
+#define DHTPIN_0 23
+#define DHTPIN_1 22
+#define DHTPIN_2 21
+#define DHTPIN_3 20
+#define DHTPIN_4 11
+#define DHTPIN_5 10
 
 #define AUTHOR "Remi Lebret"
-#define MODEL "Esp32-C6-Temp&HumSensor"
+#define MODEL "Esp32-C6-MultiTemp&HumSensor"
 
 #define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
 #define REPORT_INTERVAL 30 * 60 * 1000  // 30 minutes
