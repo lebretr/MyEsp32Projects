@@ -45,14 +45,15 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 #include "esp_log.h"
 
-#define DHT_READ_INTERVAL 10 * 1000  // 10 secondes
-#define REPORT_INTERVAL 30 * 60 * 1000   // 30 minutes
-#define TEMP_DELTA 0.2           // Changement minimum de température
-#define HUM_DELTA 0.5            // Changement minimum d'humidité
+#define DHTPIN_1 22
 
-// Conversion constant: difference in seconds between 
-// the Unix era (1970) and the Zigbee era (2000)
-#define ZIGBEE_EPOCH_OFFSET 946684800  // secondes between 1970 and 2000
+#define AUTHOR "Remi Lebret"
+#define MODEL "Esp32-H2-Temp&HumSensor"
+
+#define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
+#define REPORT_INTERVAL 30 * 60 * 1000  // 30 minutes
+#define TEMP_SENSIBILITY 0.2            // minimum change to report new temperature
+#define HUMIDITY_SENSIBILITY 0.5        // minimum change to report new humidity
 
 //#ifndef ZIGBEE_MODE_ED
 //#error "Zigbee end device mode is not selected in Tools->Zigbee mode"
@@ -70,9 +71,9 @@
 
 #include "Zigbee.h"
 
-#define TEMP_SENSOR_ENDPOINT_NUMBER 10
+#define TEMP_SENSOR_ENDPOINT_NUMBER 1
 
-#define ANALOG_DEVICE_ENDPOINT_NUMBER 1
+#define ANALOG_DEVICE_ENDPOINT_NUMBER 101
 
 uint8_t button = BOOT_PIN;  //BOOT button (not RESET button!!!)
 
@@ -83,13 +84,11 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
 #include <DHTesp.h>
-
-#define DHTPIN 22
 #define DHTTYPE DHTesp::DHT22 
-DHTesp dht;
+DHTesp dht_1;
 
-float temperature=NULL;
-float humidity=NULL;
+float temperature_1=NULL;
+float humidity_1=NULL;
 
 static const char *TAG = "Main";
 
@@ -101,15 +100,15 @@ float myfAbs(float x) {
     return *((float*)&i);
 }
 
-bool tempChanged(float current, float previous) {
-  return myfAbs(current - previous) > TEMP_DELTA;
+bool isTempChanged(float current, float previous) {
+  return myfAbs(current - previous) > TEMP_SENSIBILITY;
 }
 
-bool humChanged(float current, float previous) {
-  return myfAbs(current - previous) >= HUM_DELTA;
+bool isHumChanged(float current, float previous) {
+  return myfAbs(current - previous) >= HUMIDITY_SENSIBILITY;
 }
 
-static void temp_sensor_read(void *arg) {
+static void dht_reading(void *arg) {
 
   static const TickType_t xDelay = pdMS_TO_TICKS(2000);
 
@@ -131,15 +130,15 @@ static void temp_sensor_read(void *arg) {
     if (currentMillis - lastDHTRead >= DHT_READ_INTERVAL) {
 
       // Attendre l'intervalle minimum requis
-      delay(dht.getMinimumSamplingPeriod());
+      delay(dht_1.getMinimumSamplingPeriod());
       
       // Read data from sensor
-      TempAndHumidity data = dht.getTempAndHumidity();
+      TempAndHumidity data = dht_1.getTempAndHumidity();
   
       // check the reading status
-      if (dht.getStatus() != 0) {
+      if (dht_1.getStatus() != 0) {
         reception_failed_nb++;
-        ESP_LOGE(TAG, "Erreur DHT: %s", dht.getStatusString());
+        ESP_LOGE(TAG, "Erreur DHT: %s", dht_1.getStatusString());
 
         zbAnalogDeviceError.setAnalogInput(101);
         zbAnalogDeviceError.reportAnalogInput();
@@ -165,8 +164,8 @@ static void temp_sensor_read(void *arg) {
             zbAnalogDeviceError.reportAnalogInput();
           }
 
-          temperature=data.temperature;
-          humidity=data.humidity;
+          temperature_1=data.temperature;
+          humidity_1=data.humidity;
         }
       }
     }
@@ -174,7 +173,7 @@ static void temp_sensor_read(void *arg) {
   }
 }
 
-static void temp_zigbee_send(void *arg) {
+static void tempHum_zigbee_reporting(void *arg) {
 
   static const TickType_t xDelay = pdMS_TO_TICKS(2000);
 
@@ -184,23 +183,23 @@ static void temp_zigbee_send(void *arg) {
 
   for (;;) {
     unsigned long currentMillis = millis();
-    if ( !isnan(temperature) && (
+    if ( !isnan(temperature_1) && (
           ((currentMillis - previousExec) > REPORT_INTERVAL)
-          || tempChanged(temperature, previousT)
-          || humChanged(humidity, previousH)
+          || isTempChanged(temperature_1, previousT)
+          || isHumChanged(humidity_1, previousH)
         )
       ) {
 
       // Update temperature & humidity values in Temperature sensor EP
-      zbTempSensor.setTemperature(temperature);
-      zbTempSensor.setHumidity(humidity);
+      zbTempSensor.setTemperature(temperature_1);
+      zbTempSensor.setHumidity(humidity_1);
       previousExec = currentMillis;
-      previousT = temperature;
-      previousH = humidity;
+      previousT = temperature_1;
+      previousH = humidity_1;
 
       zbTempSensor.report();  // reports temperature and humidity values (if humidity sensor is not added, only temperature is reported)
 
-      ESP_LOGI(TAG, "Humidité: %.1f%%  Température: %.1f°C", (double)humidity, (double)temperature);
+      ESP_LOGI(TAG, "Humidité: %.1f%%  Température: %.1f°C", (double)humidity_1, (double)temperature_1);
     }
     vTaskDelay(xDelay);  // Prefer vTaskDelay to delay() + yield()
   }
@@ -216,20 +215,20 @@ void setup() {
   while (!Serial && millis() < 5000);  // Wait Serial max 5s
   ESP_LOGI(TAG, " ");
   ESP_LOGI(TAG, " ");
-  ESP_LOGI(TAG, "=== ESP32-C6 Zigbee Temp/Hum startup ===");
+  ESP_LOGI(TAG, "=== ESP32 Zigbee Temp/Hum startup ===");
 
   // Init sensor with DHT22 model (compatibility with AM2302B)
-  pinMode(DHTPIN, INPUT);
-  dht.setup(DHTPIN, DHTTYPE);
+  pinMode(DHTPIN_1, INPUT);
+  dht_1.setup(DHTPIN_1, DHTTYPE);
 
   ESP_LOGI(TAG, "Sensor initialised!");
-  ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dht.getMinimumSamplingPeriod());
+  ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dht_1.getMinimumSamplingPeriod());
 
   // Init button switch
   pinMode(button, INPUT_PULLUP);
 
   // Optional: set Zigbee device name and model
-  zbTempSensor.setManufacturerAndModel("Rémi Lebret", "Esp32-H2-01-ZigbeeTemp&HumSensor");
+  zbTempSensor.setManufacturerAndModel(AUTHOR, MODEL);
 
   zbTempSensor.setPowerSource(ZB_POWER_SOURCE_MAINS);  //ZB_POWER_SOURCE_BATTERY or ZB_POWER_SOURCE_MAINS
 
@@ -297,8 +296,8 @@ void setup() {
 
   // Start Temperature sensor reading task
   BaseType_t taskReadCreated = xTaskCreate(
-    temp_sensor_read,
-    "temp_sensor_read",
+    dht_reading,
+    "dht_reading",
     4096,  // Stack augmenté pour sécurité
     NULL,
     5,  // Priorité moyenne
@@ -309,16 +308,16 @@ void setup() {
     ESP.restart();
   }
 
-  // Start Zigbee sending task
-  BaseType_t taskSendCreated = xTaskCreate(
-    temp_zigbee_send,
-    "temp_zigbee_send",
+  // Start Zigbee reporting task
+  BaseType_t taskReportCreated = xTaskCreate(
+    tempHum_zigbee_reporting,
+    "tempHum_zigbee_reporting",
     4096,  // Stack augmenté pour sécurité
     NULL,
     5,  // Priorité moyenne
     NULL);
 
-  if (taskSendCreated != pdPASS) {
+  if (taskReportCreated != pdPASS) {
     ESP_LOGE(TAG, "ERROR: Échec création tâche envoi zigbee!");
     ESP.restart();
   }
@@ -346,7 +345,7 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  //send a random number
+  //report a random number
   //to follow ESP32 reboot
   if(startStatus==0){
     float randNumber = myfAbs(esp_random()); 
