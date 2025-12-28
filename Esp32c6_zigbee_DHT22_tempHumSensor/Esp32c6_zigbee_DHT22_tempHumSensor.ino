@@ -223,9 +223,6 @@ void setup() {
   // Add humidity cluster to the temperature sensor device with min, max and tolerance values
   zbTempSensor.addHumiditySensor(0, 100, 0.1);
 
-  // Optional: Time cluster configuration (default params, as this device will revieve time from coordinator)
-  zbTempSensor.addTimeCluster();
-
   // Add endpoint to Zigbee Core
   Zigbee.addEndpoint(&zbTempSensor);
 
