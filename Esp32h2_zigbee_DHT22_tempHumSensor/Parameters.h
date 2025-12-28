@@ -20,14 +20,15 @@
 //║                        /!\ /!\ /!\                        ║  
 //╚═══════════════════════════════════════════════════════════╝
 
+#define NUMBER_OF_DHT 5
 #define DHTPIN_1 25
-// #define DHTPIN_2 22
-// #define DHTPIN_3 12
-// #define DHTPIN_4 11
-// #define DHTPIN_5 10
+#define DHTPIN_2 22
+#define DHTPIN_3 12
+#define DHTPIN_4 11
+#define DHTPIN_5 10
 
 #define AUTHOR "Remi Lebret"
-#define MODEL "Esp32-H2-Temp&HumSensor"
+#define MODEL "Esp32-H2-MultiTemp&HumSensor"
 
 #define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
 #define REPORT_INTERVAL 30 * 60 * 1000  // 30 minutes
