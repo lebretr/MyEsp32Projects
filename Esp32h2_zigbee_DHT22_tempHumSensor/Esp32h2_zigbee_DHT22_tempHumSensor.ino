@@ -8,6 +8,7 @@
 //║ To flash reset the board, in vs code:                     ║
 //║     idf.py -p COM7 erase-flash                            ║
 //║ config to flash in vs code:                               ║
+//║     UART esp32c6 (VIA ESP-PROG-2)                         ║
 //║     UART esp32h2 (VIA ESP-PROG-2)                         ║
 //╠═──────────────────────────────────────────────────────────╣
 //║ To flash reset the board, with Arduino IDE:               ║
