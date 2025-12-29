@@ -31,6 +31,7 @@
 #define MODEL "Esp32-H2-MultiTemp&HumSensor"
 
 #define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
-#define REPORT_INTERVAL 30 * 60 * 1000  // 30 minutes
-#define TEMP_SENSIBILITY 0.2            // minimum change to report new temperature
+#define MAX_REPORT_INTERVAL_SEC 30 * 60  // 30 minutes
+#define MIN_REPORT_INTERVAL_SEC 10  // 1 minutes
+#define TEMP_SENSIBILITY 0.2         // minimum change to report new temperature
 #define HUMIDITY_SENSIBILITY 0.5        // minimum change to report new humidity
