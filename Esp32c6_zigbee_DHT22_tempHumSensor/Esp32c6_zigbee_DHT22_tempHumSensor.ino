@@ -24,9 +24,11 @@
 //╠═──────────────────────────────────────────────────────────╣
 //║ - Monitor baud: 115200                                    ║
 //╚═══════════════════════════════════════════════════════════╝
+//https://docs.espressif.com/projects/arduino-esp32/en/latest/zigbee/zigbee_core.html
 
 #define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 #include "esp_log.h"
+static const char *TAG = "Main";
 
 #include "Parameters.h"
 
@@ -43,7 +45,6 @@
 //                and routes messages (if device is mains powered, always use this role)
 // ZIGBEE_END_DEVICE: End device, connects to existing network (typically battery-powered which can sleep)
 
-
 #include "Zigbee.h"
 
 #define TEMP_SENSOR_ENDPOINT_NUMBER 1
@@ -58,14 +59,11 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
+bool TempReportingInitialized=false;
+
 #include <DHTesp.h>
 #define DHTTYPE DHTesp::DHT22 
 DHTesp dht_1;
-
-float temperature_1=NULL;
-float humidity_1=NULL;
-
-static const char *TAG = "Main";
 
 /************************ Temp sensor *****************************/
 
@@ -90,17 +88,10 @@ static void dht_reading(void *arg) {
   // Variables for non-blocking timers
   static unsigned long lastDHTRead = 0;
 
-  static int reception_failed_nb = 0;
+  static bool reception_failed = false;
 
   for (;;) {
     unsigned long currentMillis = millis();
-
-    
-    // if (reception_failed_nb > 10) {
-    //   ESP_LOGE(TAG, "Trop d'échecs, redémarrage...");
-    //   vTaskDelay(pdMS_TO_TICKS(1000));
-    //   ESP.restart();
-    // }
 
     if (currentMillis - lastDHTRead >= DHT_READ_INTERVAL) {
 
@@ -112,71 +103,45 @@ static void dht_reading(void *arg) {
   
       // check the reading status
       if (dht_1.getStatus() != 0) {
-        reception_failed_nb++;
+        reception_failed=true;
         ESP_LOGE(TAG, "Erreur DHT: %s", dht_1.getStatusString());
 
-        zbAnalogDeviceError.setAnalogInput(101);
-        zbAnalogDeviceError.reportAnalogInput();
+        zbAnalogDeviceError.setAnalogInput(1);
+        //zbAnalogDeviceError.reportAnalogInput();
 
         vTaskDelay(pdMS_TO_TICKS(2000)); // The DHT22 returns a maximum of one measurement every 2 seconds
       }else{
         
         if (isnan(data.humidity) || isnan(data.temperature)) {
-          reception_failed_nb++;
-          ESP_LOGE(TAG, "Échec réception: %d\n", reception_failed_nb);
+          reception_failed=true;
+          ESP_LOGE(TAG, "Échec temp or hum not an integer");
 
-          zbAnalogDeviceError.setAnalogInput(500001);
-          zbAnalogDeviceError.reportAnalogInput();
+          zbAnalogDeviceError.setAnalogInput(2);
+          //zbAnalogDeviceError.reportAnalogInput();
 
           vTaskDelay(pdMS_TO_TICKS(2000)); // The DHT22 returns a maximum of one measurement every 2 seconds
         } else {
           lastDHTRead = currentMillis;
 
-          if(reception_failed_nb!=0){
-            reception_failed_nb = 0;
+          if(reception_failed==true){
+            reception_failed = false;
 
             zbAnalogDeviceError.setAnalogInput(0);
-            zbAnalogDeviceError.reportAnalogInput();
+            //zbAnalogDeviceError.reportAnalogInput();
           }
-
-          temperature_1=data.temperature;
-          humidity_1=data.humidity;
+          
+          zbTempSensor.setTemperature(data.temperature);
+          zbTempSensor.setHumidity(data.humidity);
+          
+          if(TempReportingInitialized==false){
+            TempReportingInitialized=true;
+            zbTempSensor.setReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, TEMP_SENSIBILITY);
+            zbTempSensor.setHumidityReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, HUMIDITY_SENSIBILITY);
+          }
         }
       }
     }
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
-  }
-}
-
-static void tempHum_zigbee_reporting(void *arg) {
-
-  static const TickType_t xDelay = pdMS_TO_TICKS(2000);
-
-  static unsigned long previousExec = 0;
-  static float previousT = 0;
-  static float previousH = 0;
-
-  for (;;) {
-    unsigned long currentMillis = millis();
-    if ( !isnan(temperature_1) && (
-          ((currentMillis - previousExec) > REPORT_INTERVAL)
-          || isTempChanged(temperature_1, previousT)
-          || isHumChanged(humidity_1, previousH)
-        )
-      ) {
-
-      // Update temperature & humidity values in Temperature sensor EP
-      zbTempSensor.setTemperature(temperature_1);
-      zbTempSensor.setHumidity(humidity_1);
-      previousExec = currentMillis;
-      previousT = temperature_1;
-      previousH = humidity_1;
-
-      zbTempSensor.report();  // reports temperature and humidity values (if humidity sensor is not added, only temperature is reported)
-
-      ESP_LOGI(TAG, "Humidité: %.1f%%  Température: %.1f°C", (double)humidity_1, (double)temperature_1);
-    }
-    vTaskDelay(xDelay);  // Prefer vTaskDelay to delay() + yield()
   }
 }
 
@@ -280,26 +245,12 @@ void setup() {
     ESP.restart();
   }
 
-  // Start Zigbee reporting task
-  BaseType_t taskReportCreated = xTaskCreate(
-    tempHum_zigbee_reporting,
-    "tempHum_zigbee_reporting",
-    4096,  // Stack augmenté pour sécurité
-    NULL,
-    5,  // Priorité moyenne
-    NULL);
-
-  if (taskReportCreated != pdPASS) {
-    ESP_LOGE(TAG, "ERROR: Échec création tâche envoi zigbee!");
-    ESP.restart();
-  }
-
   // Set reporting interval for temperature measurement in seconds, must be called after Zigbee.begin()
   // min_interval and max_interval in seconds, delta (temp change in 0,1 °C)
-  // if min = 1 and max = 0, reporting is sent only when temperature changes by delta
-  // if min = 0 and max = 10, reporting is sent every 10 seconds or temperature changes by delta
-  // if min = 0, max = 10 and delta = 0, reporting is sent every 10 seconds regardless of temperature change
   //zbTempSensor.setReporting(0, 60, 0.1);
+  zbAnalogDevicePid.setAnalogInputReporting(0,MAX_REPORT_INTERVAL_SEC,0);
+  zbAnalogDeviceError.setAnalogInputReporting(0,MAX_REPORT_INTERVAL_SEC,0);
+
 
   ESP_LOGI(TAG, "=== Initialization complete ===\n");
 }
@@ -323,10 +274,10 @@ void loop() {
     float randNumber = myfAbs(esp_random()); 
     ESP_LOGI(TAG, "Pid: %f", (double)randNumber);
     zbAnalogDevicePid.setAnalogInput(randNumber);
-    zbAnalogDevicePid.reportAnalogInput();
+    //zbAnalogDevicePid.reportAnalogInput();
 
     zbAnalogDeviceError.setAnalogInput(0);
-    zbAnalogDeviceError.reportAnalogInput();
+    //zbAnalogDeviceError.reportAnalogInput();
 
     startStatus=1;
   }
@@ -348,6 +299,13 @@ void loop() {
       if (pressDuration >= SHORT_PRESS_MIN && pressDuration < FACTORY_RESET_DELAY) {
         // short press : manual report
         ESP_LOGI(TAG, "Manual report T°c et Humidity");
+        
+        zbAnalogDevicePid.reportAnalogInput();
+        delay( pdMS_TO_TICKS(200) );;
+
+        zbAnalogDeviceError.reportAnalogInput();
+        delay( pdMS_TO_TICKS(200) );
+        
         zbTempSensor.report();
       }
       
