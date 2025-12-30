@@ -80,7 +80,7 @@ dhtTH_S dhtTH_V[NUMBER_OF_DHT] ;
 
 static int NumberOfDht=NUMBER_OF_DHT;
 
-int DhtReadIntervalOnError=2500;
+int DhtReadIntervalOnError=2000;
 
 static unsigned long ERROR_CODE=0;
 
@@ -127,8 +127,8 @@ static void dht_reading(void *arg) {
             ERROR_CODE=ERROR_CODE+(1* pow(10 , i));
             dhtTH_V[i].DhtReadInterval=DhtReadIntervalOnError;
           }
-          if(dhtTH_V[i].DhtReadInterval <= 400 * 1000){
-            dhtTH_V[i].DhtReadInterval=dhtTH_V[i].DhtReadInterval * 2;
+          if(dhtTH_V[i].DhtReadInterval <= 60 * 1000){
+            dhtTH_V[i].DhtReadInterval=dhtTH_V[i].DhtReadInterval + 2000;
             ESP_LOGI(TAG, "nouveau read interval DHT n°%d: %d", i, dhtTH_V[i].DhtReadInterval);
           }
 
@@ -160,7 +160,7 @@ static void dht_reading(void *arg) {
     }
 
     if(ERROR_CODE!=PREVIOUS_ERROR_CODE){
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(2000));
       PREVIOUS_ERROR_CODE=ERROR_CODE;
       zbAnalogDeviceError.setAnalogInput(ERROR_CODE);
       // zbAnalogDeviceError.reportAnalogInput();
