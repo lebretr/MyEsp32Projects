@@ -49,7 +49,7 @@ static const char *TAG = "Main";
 
 #define TEMP_SENSOR_ENDPOINT_NUMBER 1
 
-#define AC_SENSOR_ENDPOINT_NUMBER 13
+#define ZIGBEE_OUTLET_ENDPOINT_NUMBER  10
 
 #define ANALOG_DEVICE_ENDPOINT_NUMBER 101
 
@@ -90,9 +90,9 @@ static unsigned long ERROR_CODE=0;
 
 EnergyMonitor emon1;         // Create an instance
 
-ZigbeeElectricalMeasurement zbElectricalMeasurement = ZigbeeElectricalMeasurement(AC_SENSOR_ENDPOINT_NUMBER);
+ZigbeePowerOutlet zbOutlet = ZigbeePowerOutlet(ZIGBEE_OUTLET_ENDPOINT_NUMBER);
 
-/************************ Temp sensor *****************************/
+/************************ Common function *****************************/
 
 float myfAbs(float x) {
     uint32_t i = *((uint32_t*)&x);
@@ -100,6 +100,7 @@ float myfAbs(float x) {
     return *((float*)&i);
 }
 
+/************************ Temp sensor *****************************/
 bool isTempChanged(float current, float previous) {
   return myfAbs(current - previous) > TEMP_SENSIBILITY;
 }
@@ -177,7 +178,7 @@ static void dht_reading(void *arg) {
   }
 }
 
-
+/************************ Power on/off sensor *****************************/
 static void ZMPT101B_reading(void *arg) {
 
   static const TickType_t xDelay = pdMS_TO_TICKS(10000); // Attendre l'intervalle minimum requis
@@ -190,39 +191,34 @@ static void ZMPT101B_reading(void *arg) {
     double Vrms = emon1.Vrms;
 
     if(millis()>start+10000){
-      zbElectricalMeasurement.setDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, Vrms);
-        zbElectricalMeasurement.reportDC(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE);
     
-      if(Vrms<30){
+      if(Vrms<4){
         ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
+        // zbOutlet.setState(false);
       }else if(Vrms>250){
         ESP_LOGE(TAG, "AC ERREUR? : %f",Vrms);
+        // zbOutlet.setState(true);
       }else{
         ESP_LOGI(TAG, "AC ON : %f",Vrms);
+        // zbOutlet.setState(true);
       }
-      if(acReportingInitialized==false){
-        ESP_LOGI(TAG, "zbElectricalMeasurement.setDCReporting");
-        zbElectricalMeasurement.reportDC(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE);
-        acReportingInitialized=true;
-        
-        // zbElectricalMeasurement.setDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 0);
-        // zbElectricalMeasurement.setDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 0);
-
-        // zbElectricalMeasurement.setDCReporting(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, 0, 30, 0); // report every 30 seconds if value changes by 10 (0.1V)
-        // zbElectricalMeasurement.setDCReporting(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 0, 30, 0);  // report every 30 seconds if value changes by 10 (0.1A)
-        // zbElectricalMeasurement.setDCReporting(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 0, 30, 0);
+      if(int(Vrms) % 2 ==0 ){
+        zbOutlet.setState(true);
+      }else{
+        zbOutlet.setState(false);
       }
     }
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
   }
 }
 
+void setPowerOnOff(bool value) {
+  ESP_LOGI(TAG, "I'm not a true switch. Nothing to do!");
+}
+
 /********************* Arduino functions **************************/
 void setup() {
   Serial.begin(115200);
-
-  // esp_log_level_set("*", ESP_LOG_VERBOSE);
-  // esp_log_level_set(TAG, ESP_LOG_VERBOSE);
 
   while (!Serial && millis() < 5000);  // Wait Serial max 5s
   ESP_LOGI(TAG, " ");
@@ -267,10 +263,11 @@ void setup() {
   // Init button switch
   pinMode(button, INPUT_PULLUP);
 
+  // Init zigbeeTempSensor
   for (int i=0; i<NumberOfDht; i++) {
     zbTempSensor_V[i].zbTempSensor = new ZigbeeTempSensor(TEMP_SENSOR_ENDPOINT_NUMBER + i);
   }
-  // Optional: set Zigbee device name and model
+  
   zbTempSensor_V[0].zbTempSensor->setManufacturerAndModel(AUTHOR, MODEL);
 
   zbTempSensor_V[0].zbTempSensor->setPowerSource(ZB_POWER_SOURCE_MAINS);  //ZB_POWER_SOURCE_BATTERY or ZB_POWER_SOURCE_MAINS
@@ -296,6 +293,10 @@ void setup() {
     Zigbee.addEndpoint(zbTempSensor_V[i].zbTempSensor);
   }
 
+  // Init zigbeeOutlet to track if there is current in the outlet
+  zbOutlet.onPowerOutletChange(setPowerOnOff);
+  Zigbee.addEndpoint(&zbOutlet);
+
   // Zigbee Sensor to track restart (crash, ...)
   zbAnalogDevicePid.addAnalogInput();
   zbAnalogDevicePid.setAnalogInputApplication(ESP_ZB_ZCL_AI_COUNT_UNITLESS_COUNT);
@@ -311,20 +312,6 @@ void setup() {
   zbAnalogDeviceError.setAnalogInputResolution(1);
 
   Zigbee.addEndpoint(&zbAnalogDeviceError);
-
-  zbElectricalMeasurement.addDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE);
-  zbElectricalMeasurement.addDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT);
-  zbElectricalMeasurement.addDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_POWER);
-
-  zbElectricalMeasurement.setDCMinMaxValue(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, 0, 300000);  // 0-500.000V
-  zbElectricalMeasurement.setDCMinMaxValue(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 0, 1000);  // 0-1.000A
-  zbElectricalMeasurement.setDCMinMaxValue(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 0, 5000);    // 0-5.000W
-
-  zbElectricalMeasurement.setDCMultiplierDivisor(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, 1, 1);  //Volt
-  zbElectricalMeasurement.setDCMultiplierDivisor(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 1, 1);  // 1/1000 = 0.001A (1 unit of measurement = 0.001A = 1mA)
-  zbElectricalMeasurement.setDCMultiplierDivisor(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 1, 1);    // 1/1000 = 0.001W (1 unit of measurement = 0.001W = 1mW)
-
-  Zigbee.addEndpoint(&zbElectricalMeasurement);
 
   ESP_LOGI(TAG, "Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode

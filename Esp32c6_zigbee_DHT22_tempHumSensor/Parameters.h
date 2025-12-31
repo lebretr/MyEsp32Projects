@@ -12,9 +12,9 @@
 //║ - GPIO0, GPIO1, GPIO2, GPIO3                              ║
 //╚═══════════════════════════════════════════════════════════╝
 
-#define NUMBER_OF_DHT 6
-#define DHTPIN_0 23
-#define DHTPIN_1 22
+#define NUMBER_OF_DHT 1
+#define DHTPIN_0 22
+#define DHTPIN_1 23
 #define DHTPIN_2 21
 #define DHTPIN_3 20
 #define DHTPIN_4 11
@@ -23,7 +23,7 @@
 #define ZMPT101BPIN_1 0
 
 #define AUTHOR "Remi Lebret"
-#define MODEL "Esp32-C6-Multi-TH"
+#define MODEL "Esp32-C6-multiTH&outlet"
 
 #define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
 #define MAX_REPORT_INTERVAL_SEC 30 * 60  // 30 minutes
