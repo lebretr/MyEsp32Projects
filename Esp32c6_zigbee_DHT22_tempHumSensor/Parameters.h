@@ -12,7 +12,7 @@
 //║ - GPIO0, GPIO1, GPIO2, GPIO3                              ║
 //╚═══════════════════════════════════════════════════════════╝
 
-#define NUMBER_OF_DHT 1
+#define NUMBER_OF_DHT_USED 1
 #define DHTPIN_0 22
 #define DHTPIN_1 23
 #define DHTPIN_2 21
