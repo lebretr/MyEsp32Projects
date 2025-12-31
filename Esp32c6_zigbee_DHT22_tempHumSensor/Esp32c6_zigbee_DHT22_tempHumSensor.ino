@@ -175,7 +175,7 @@ static void ZMPT101B_reading(void *arg) {
 
     if(millis()>start+10000){
     
-      if(Vrms<4){
+      if(Vrms<30){
         ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(false);
@@ -189,11 +189,11 @@ static void ZMPT101B_reading(void *arg) {
         zbOutlet.setState(true);
       }
 
-      if(int(Vrms) % 2 ==0 ){
-        zbOutlet.setState(true);
-      }else{
-        zbOutlet.setState(false);
-      }
+      // if(int(Vrms) % 2 ==0 ){
+      //   zbOutlet.setState(true);
+      // }else{
+      //   zbOutlet.setState(false);
+      // }
     }
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
   }
@@ -217,7 +217,7 @@ static void error_code_sending(void *arg) {
       // ESP_LOGI(TAG, "ERROR_CODE : %d %d %d %lu",i , error_I.device_ERROR_CODE[i], t, ERROR_CODE );
     }
     
-    ESP_LOGI(TAG, "ERROR_CODE : %lu",ERROR_CODE);
+    // ESP_LOGI(TAG, "ERROR_CODE : %lu",ERROR_CODE);
 
     zbAnalogDeviceError.setAnalogInput(ERROR_CODE);
 
