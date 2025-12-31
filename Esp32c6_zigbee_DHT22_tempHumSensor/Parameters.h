@@ -20,6 +20,8 @@
 #define DHTPIN_4 11
 #define DHTPIN_5 10
 
+#define ZMPT101BPIN_1 0
+
 #define AUTHOR "Remi Lebret"
 #define MODEL "Esp32-C6-Multi-TH"
 

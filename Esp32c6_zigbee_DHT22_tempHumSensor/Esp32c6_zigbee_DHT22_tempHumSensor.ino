@@ -49,6 +49,8 @@ static const char *TAG = "Main";
 
 #define TEMP_SENSOR_ENDPOINT_NUMBER 1
 
+#define AC_SENSOR_ENDPOINT_NUMBER 13
+
 #define ANALOG_DEVICE_ENDPOINT_NUMBER 101
 
 uint8_t button = BOOT_PIN;  //BOOT button (not RESET button!!!)
@@ -83,6 +85,12 @@ static int NumberOfDht=NUMBER_OF_DHT;
 int DhtReadIntervalOnError=2000;
 
 static unsigned long ERROR_CODE=0;
+
+#include "EmonLib.h"         // Include Emon Library
+
+EnergyMonitor emon1;         // Create an instance
+
+ZigbeeElectricalMeasurement zbElectricalMeasurement = ZigbeeElectricalMeasurement(AC_SENSOR_ENDPOINT_NUMBER);
 
 /************************ Temp sensor *****************************/
 
@@ -169,6 +177,46 @@ static void dht_reading(void *arg) {
   }
 }
 
+
+static void ZMPT101B_reading(void *arg) {
+
+  static const TickType_t xDelay = pdMS_TO_TICKS(10000); // Attendre l'intervalle minimum requis
+  static bool acReportingInitialized=false;
+
+  unsigned long start = millis();
+
+  for (;;) {
+    emon1.calcVI(20, 2000);
+    double Vrms = emon1.Vrms;
+
+    if(millis()>start+10000){
+      zbElectricalMeasurement.setDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, Vrms);
+        zbElectricalMeasurement.reportDC(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE);
+    
+      if(Vrms<30){
+        ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
+      }else if(Vrms>250){
+        ESP_LOGE(TAG, "AC ERREUR? : %f",Vrms);
+      }else{
+        ESP_LOGI(TAG, "AC ON : %f",Vrms);
+      }
+      if(acReportingInitialized==false){
+        ESP_LOGI(TAG, "zbElectricalMeasurement.setDCReporting");
+        zbElectricalMeasurement.reportDC(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE);
+        acReportingInitialized=true;
+        
+        // zbElectricalMeasurement.setDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 0);
+        // zbElectricalMeasurement.setDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 0);
+
+        // zbElectricalMeasurement.setDCReporting(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, 0, 30, 0); // report every 30 seconds if value changes by 10 (0.1V)
+        // zbElectricalMeasurement.setDCReporting(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 0, 30, 0);  // report every 30 seconds if value changes by 10 (0.1A)
+        // zbElectricalMeasurement.setDCReporting(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 0, 30, 0);
+      }
+    }
+    vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
+  }
+}
+
 /********************* Arduino functions **************************/
 void setup() {
   Serial.begin(115200);
@@ -212,6 +260,9 @@ void setup() {
   }
 
   ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dhtTH_V[0].dht.getMinimumSamplingPeriod());
+
+  // Init voltage reader
+  emon1.voltage(ZMPT101BPIN_1, 230, 2);  // Voltage: input pin, calibration, phase_shift (2=>50hz, 1.7=>60hz)
 
   // Init button switch
   pinMode(button, INPUT_PULLUP);
@@ -261,6 +312,20 @@ void setup() {
 
   Zigbee.addEndpoint(&zbAnalogDeviceError);
 
+  zbElectricalMeasurement.addDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE);
+  zbElectricalMeasurement.addDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT);
+  zbElectricalMeasurement.addDCMeasurement(ZIGBEE_DC_MEASUREMENT_TYPE_POWER);
+
+  zbElectricalMeasurement.setDCMinMaxValue(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, 0, 300000);  // 0-500.000V
+  zbElectricalMeasurement.setDCMinMaxValue(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 0, 1000);  // 0-1.000A
+  zbElectricalMeasurement.setDCMinMaxValue(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 0, 5000);    // 0-5.000W
+
+  zbElectricalMeasurement.setDCMultiplierDivisor(ZIGBEE_DC_MEASUREMENT_TYPE_VOLTAGE, 1, 1);  //Volt
+  zbElectricalMeasurement.setDCMultiplierDivisor(ZIGBEE_DC_MEASUREMENT_TYPE_CURRENT, 1, 1);  // 1/1000 = 0.001A (1 unit of measurement = 0.001A = 1mA)
+  zbElectricalMeasurement.setDCMultiplierDivisor(ZIGBEE_DC_MEASUREMENT_TYPE_POWER, 1, 1);    // 1/1000 = 0.001W (1 unit of measurement = 0.001W = 1mW)
+
+  Zigbee.addEndpoint(&zbElectricalMeasurement);
+
   ESP_LOGI(TAG, "Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode
   if (!Zigbee.begin(ZIGBEE_ROLE)) {
@@ -286,7 +351,7 @@ void setup() {
   ESP_LOGI(TAG, "Connected to Zigbee network!");
 
   // Start Temperature sensor reading task
-  BaseType_t taskReadCreated = xTaskCreate(
+  BaseType_t taskDHTReadCreated = xTaskCreate(
     dht_reading,
     "dht_reading",
     4096,  // Stack augmenté pour sécurité
@@ -294,8 +359,22 @@ void setup() {
     5,  // Priorité moyenne
     NULL);
 
-  if (taskReadCreated != pdPASS) {
-    ESP_LOGE(TAG, "ERROR: Échec création tâche lecture capteur!");
+  if (taskDHTReadCreated != pdPASS) {
+    ESP_LOGE(TAG, "ERROR: Échec création tâche lecture capteur DHT!");
+    ESP.restart();
+  }
+
+  // Start Voltage sensor reading task
+  BaseType_t taskZMPT101BReadCreated = xTaskCreate(
+    ZMPT101B_reading,
+    "ZMPT101B_reading",
+    4096,  // Stack augmenté pour sécurité
+    NULL,
+    5,  // Priorité moyenne
+    NULL);
+
+  if (taskZMPT101BReadCreated != pdPASS) {
+    ESP_LOGE(TAG, "ERROR: Échec création tâche lecture capteur ZMPT101B!");
     ESP.restart();
   }
 
