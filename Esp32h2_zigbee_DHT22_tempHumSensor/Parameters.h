@@ -27,8 +27,10 @@
 #define DHTPIN_4 11
 #define DHTPIN_5 10
 
+#define ZMPT101BPIN_1 1
+
 #define AUTHOR "Remi Lebret"
-#define MODEL "Esp32-H2-Multi-TH"
+#define MODEL "Esp32-H2-multiTH&outlet"
 
 #define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
 #define MAX_REPORT_INTERVAL_SEC 30 * 60  // 30 minutes
