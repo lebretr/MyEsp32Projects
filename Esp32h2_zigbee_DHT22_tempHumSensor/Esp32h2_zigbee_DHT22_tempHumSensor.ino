@@ -75,6 +75,7 @@ struct dhtTH_S {
   DHT_Unified* dht;
   float temperature;
   float humidity;
+  unsigned long lastReadOk=0;
   int errorIndex;
 } dhtTH_R;
 
@@ -137,13 +138,12 @@ static void dht_reading(void *arg) {
         // check the reading status
         if (isnan(h) || isnan(t)) {
           ESP_LOGE(TAG, "Erreur DHT n°%d", i);
-
-          error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
         } else {
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=0;
 
           dhtTH_V[i].temperature=t;
           dhtTH_V[i].humidity=h;
+          dhtTH_V[i].lastReadOk=currentMillis;
 
           zbTempSensor_V[i].zbTempSensor->setTemperature(dhtTH_V[i].temperature);
           zbTempSensor_V[i].zbTempSensor->setHumidity(dhtTH_V[i].humidity);
@@ -153,6 +153,10 @@ static void dht_reading(void *arg) {
             zbTempSensor_V[i].zbTempSensor->setReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, TEMP_SENSIBILITY);
             zbTempSensor_V[i].zbTempSensor->setHumidityReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, HUMIDITY_SENSIBILITY);
           }
+        }
+
+        if (currentMillis - dhtTH_V[i].lastReadOk > 10000) {
+          error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
         }
     }
 
@@ -186,12 +190,6 @@ static void ZMPT101B_reading(void *arg) {
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(true);
       }
-
-      // if(int(Vrms) % 2 ==0 ){
-      //   zbOutlet.setState(true);
-      // }else{
-      //   zbOutlet.setState(false);
-      // }
     }
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
   }
