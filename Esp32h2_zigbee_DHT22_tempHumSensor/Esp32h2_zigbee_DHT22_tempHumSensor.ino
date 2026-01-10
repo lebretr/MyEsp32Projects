@@ -59,8 +59,10 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
-#include <DHTesp.h>
-#define DHTTYPE DHTesp::DHT22 
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#define DHTTYPE DHT22
 
 struct zbTempSensor_S {
   ZigbeeTempSensor* zbTempSensor;
@@ -70,11 +72,9 @@ struct zbTempSensor_S {
 zbTempSensor_S zbTempSensor_V[NUMBER_OF_DHT_USED] ;
 
 struct dhtTH_S {
-  DHTesp dht;
+  DHT_Unified* dht;
   float temperature;
   float humidity;
-  // int readInterval = DHT_READ_INTERVAL;
-  // unsigned long lastDHTRead = 0;
   int errorIndex;
 } dhtTH_R;
 
@@ -127,24 +127,23 @@ static void dht_reading(void *arg) {
     unsigned long currentMillis = millis();
     
     for (int i=0; i<NumberOfDht; i++) {
-      // if (currentMillis - dhtTH_V[i].lastDHTRead >= dhtTH_V[i].readInterval) {
-        // dhtTH_V[i].lastDHTRead = currentMillis;
-
         // Read data from sensor
-        TempAndHumidity data = dhtTH_V[i].dht.getTempAndHumidity();
+        sensors_event_t event;
+        dhtTH_V[i].dht->temperature().getEvent(&event);
+        float t = event.temperature; // Lis la température en degré celsius
+        dhtTH_V[i].dht->humidity().getEvent(&event);
+        float h = event.relative_humidity; // Lis le taux d'humidite en %
     
         // check the reading status
-        if (dhtTH_V[i].dht.getStatus() != 0) {
-          ESP_LOGE(TAG, "Erreur DHT n°%d: %s", i, dhtTH_V[i].dht.getStatusString());
+        if (isnan(h) || isnan(t)) {
+          ESP_LOGE(TAG, "Erreur DHT n°%d", i);
 
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
-          // dhtTH_V[i].readInterval=dhtTH_V[i].dht.getMinimumSamplingPeriod();
         } else {
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=0;
-          // dhtTH_V[i].readInterval=DHT_READ_INTERVAL;
 
-          dhtTH_V[i].temperature=data.temperature;
-          dhtTH_V[i].humidity=data.humidity;
+          dhtTH_V[i].temperature=t;
+          dhtTH_V[i].humidity=h;
 
           zbTempSensor_V[i].zbTempSensor->setTemperature(dhtTH_V[i].temperature);
           zbTempSensor_V[i].zbTempSensor->setHumidity(dhtTH_V[i].humidity);
@@ -155,7 +154,6 @@ static void dht_reading(void *arg) {
             zbTempSensor_V[i].zbTempSensor->setHumidityReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, HUMIDITY_SENSIBILITY);
           }
         }
-      // }
     }
 
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
@@ -175,7 +173,7 @@ static void ZMPT101B_reading(void *arg) {
 
     if(millis()>start+10000){
     
-      if(Vrms<30){
+      if(Vrms<50){
         ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(false);
@@ -244,36 +242,37 @@ void setup() {
     
     if(i==0){
       pinMode(DHTPIN_0, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_0, DHTTYPE);
+      dhtTH_V[i].dht = new DHT_Unified(DHTPIN_0, DHTTYPE);
     }
     if(i==1){
       pinMode(DHTPIN_1, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_1, DHTTYPE);
+      dhtTH_V[i].dht = new DHT_Unified(DHTPIN_1, DHTTYPE);
     }
     if(i==2){
       pinMode(DHTPIN_2, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_2, DHTTYPE);
+      dhtTH_V[i].dht = new DHT_Unified(DHTPIN_2, DHTTYPE);
     }
     if(i==3){
       pinMode(DHTPIN_3, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_3, DHTTYPE);
+      dhtTH_V[i].dht = new DHT_Unified(DHTPIN_3, DHTTYPE);
     }
     if(i==4){
       pinMode(DHTPIN_4, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_4, DHTTYPE);
+      dhtTH_V[i].dht = new DHT_Unified(DHTPIN_4, DHTTYPE);
     }
     if(i==5){
       pinMode(DHTPIN_5, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_5, DHTTYPE);
+      dhtTH_V[i].dht = new DHT_Unified(DHTPIN_5, DHTTYPE);
     }
 
     ESP_LOGI(TAG, "Sensor n°%d initialised!", i);
   }
 
-  ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dhtTH_V[0].dht.getMinimumSamplingPeriod());
+  // ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dhtTH_V[0].dht.getMinimumSamplingPeriod());
 
   // Init voltage reader
   zmpt101b.emon.voltage(ZMPT101BPIN_1, 230, 2);  // Voltage: input pin, calibration, phase_shift (2=>50hz, 1.7=>60hz)
+  zmpt101b.emon.current(FAKECURRENTPIN_1, 111.1);       // Current: input pin, calibration.
 
   zmpt101b.errorIndex=int(NumberOfDevices)-1; //zmpt101b is the last device 
 

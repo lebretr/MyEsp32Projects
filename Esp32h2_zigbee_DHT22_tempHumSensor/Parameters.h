@@ -29,6 +29,7 @@
 #define DHTPIN_5 0
 
 #define ZMPT101BPIN_1 1
+#define FAKECURRENTPIN_1 2
 
 #define AUTHOR "Remi Lebret"
 #define MODEL "Esp32-H2-multiTH&outlet"
