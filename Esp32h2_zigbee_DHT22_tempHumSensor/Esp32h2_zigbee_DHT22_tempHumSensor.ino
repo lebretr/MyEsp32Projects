@@ -73,8 +73,8 @@ struct dhtTH_S {
   DHTesp dht;
   float temperature;
   float humidity;
-  int readInterval = DHT_READ_INTERVAL;
-  unsigned long lastDHTRead = 0;
+  // int readInterval = DHT_READ_INTERVAL;
+  // unsigned long lastDHTRead = 0;
   int errorIndex;
 } dhtTH_R;
 
@@ -127,8 +127,8 @@ static void dht_reading(void *arg) {
     unsigned long currentMillis = millis();
     
     for (int i=0; i<NumberOfDht; i++) {
-      if (currentMillis - dhtTH_V[i].lastDHTRead >= DHT_READ_INTERVAL) {
-        dhtTH_V[i].lastDHTRead = currentMillis;
+      // if (currentMillis - dhtTH_V[i].lastDHTRead >= dhtTH_V[i].readInterval) {
+        // dhtTH_V[i].lastDHTRead = currentMillis;
 
         // Read data from sensor
         TempAndHumidity data = dhtTH_V[i].dht.getTempAndHumidity();
@@ -138,10 +138,10 @@ static void dht_reading(void *arg) {
           ESP_LOGE(TAG, "Erreur DHT n°%d: %s", i, dhtTH_V[i].dht.getStatusString());
 
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
-          dhtTH_V[i].readInterval=dhtTH_V[i].dht.getMinimumSamplingPeriod();
+          // dhtTH_V[i].readInterval=dhtTH_V[i].dht.getMinimumSamplingPeriod();
         } else {
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=0;
-          dhtTH_V[i].readInterval=DHT_READ_INTERVAL;
+          // dhtTH_V[i].readInterval=DHT_READ_INTERVAL;
 
           dhtTH_V[i].temperature=data.temperature;
           dhtTH_V[i].humidity=data.humidity;
@@ -155,7 +155,7 @@ static void dht_reading(void *arg) {
             zbTempSensor_V[i].zbTempSensor->setHumidityReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, HUMIDITY_SENSIBILITY);
           }
         }
-      }
+      // }
     }
 
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()

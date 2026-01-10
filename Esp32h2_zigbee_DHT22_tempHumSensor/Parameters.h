@@ -20,19 +20,20 @@
 //║                        /!\ /!\ /!\                        ║  
 //╚═══════════════════════════════════════════════════════════╝
 
-#define NUMBER_OF_DHT 5
+#define NUMBER_OF_DHT_USED 1
+#define DHTPIN_0 22
 #define DHTPIN_1 25
-#define DHTPIN_2 22
-#define DHTPIN_3 12
-#define DHTPIN_4 11
-#define DHTPIN_5 10
+#define DHTPIN_2 12
+#define DHTPIN_3 11
+#define DHTPIN_4 10
+#define DHTPIN_5 0
 
 #define ZMPT101BPIN_1 1
 
 #define AUTHOR "Remi Lebret"
 #define MODEL "Esp32-H2-multiTH&outlet"
 
-#define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
+//#define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
 #define MAX_REPORT_INTERVAL_SEC 30 * 60  // 30 minutes
 #define MIN_REPORT_INTERVAL_SEC 10  // 10 sec
 #define TEMP_SENSIBILITY 0.2         // minimum change to report new temperature
