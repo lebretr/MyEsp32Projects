@@ -21,11 +21,12 @@
 #define DHTPIN_5 10
 
 #define ZMPT101BPIN_1 0
+#define FAKECURRENTPIN_1 1
 
 #define AUTHOR "Remi Lebret"
 #define MODEL "Esp32-C6-multiTH&outlet"
 
-#define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
+// #define DHT_READ_INTERVAL 10 * 1000     // 10 secondes
 #define MAX_REPORT_INTERVAL_SEC 30 * 60  // 30 minutes
 #define MIN_REPORT_INTERVAL_SEC 10  // 10 sec
 #define TEMP_SENSIBILITY 0.2         // minimum change to report new temperature
