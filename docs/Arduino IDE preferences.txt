@@ -8,7 +8,7 @@ https://espressif.github.io/arduino-esp32/package_esp32_index.json
 Dans Board manager, installer: esp32 by espressif systems
 
 Dans library manager:
-- DHT sensor library for ESPx by beegee_tokyo (for project with dht22 )
+- DHTNEW by Rob Tillaart (for project with dht22, AM2302,... )
 - u8g2 (for esp32c3 with oled screen)
 - ESP32_bleSerial (for esp32c3 project needed ble)
 
