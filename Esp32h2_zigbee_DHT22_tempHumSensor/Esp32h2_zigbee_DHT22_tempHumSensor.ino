@@ -59,7 +59,13 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
-#include <dhtnew.h>
+#include "Grove_Temperature_And_Humidity_Sensor.h"
+// Uncomment whatever type you're using!
+//#define DHTTYPE DHT11   // DHT 11
+#define DHTTYPE DHT22   // DHT 22  (AM2302)
+//#define DHTTYPE DHT21   // DHT 21 (AM2301)
+//#define DHTTYPE DHT10   // DHT 10
+//#define DHTTYPE DHT20   // DHT 20
 
 struct zbTempSensor_S {
   ZigbeeTempSensor* zbTempSensor;
@@ -69,12 +75,10 @@ struct zbTempSensor_S {
 zbTempSensor_S zbTempSensor_V[NUMBER_OF_DHT_USED] ;
 
 struct dhtTH_S {
-  DHTNEW* dht;  //DHTNEW mySensor(5);   //  ESP 16    UNO 5    MKR1010 5
+  DHT* dht;
   float temperature;
   float humidity;
   unsigned long lastReadOk=0;
-  // int readInterval = DHT_READ_INTERVAL;
-  // unsigned long lastDHTRead = 0;
   int errorIndex;
 } dhtTH_R;
 
@@ -121,68 +125,23 @@ bool isHumChanged(float current, float previous) {
 static void dht_reading(void *arg) {
 
   static const TickType_t xDelay = pdMS_TO_TICKS(2000); // Attendre l'intervalle minimum requis
-  // static const TickType_t xDelay = pdMS_TO_TICKS(dhtTH_V[0].dht.getMinimumSamplingPeriod());
 
   for (;;) {
     unsigned long currentMillis = millis();
     
     for (int i=0; i<NumberOfDht; i++) {
-      // if (currentMillis - dhtTH_V[i].lastDHTRead >= dhtTH_V[i].readInterval) {
-        // dhtTH_V[i].lastDHTRead = currentMillis;
+      
+        float temp_hum_val[2] = {0};
 
-        // Read data from sensor
-        // TempAndHumidity data = dhtTH_V[i].dht.getTempAndHumidity();
-
-        
-        // check the reading status
-        int status = dhtTH_V[i].dht->read();
-        if (status != DHTLIB_OK) {
-
-          char* m;
-          switch (status)
-          {
-            case DHTLIB_ERROR_CHECKSUM:
-              m="Checksum error";
-              break;
-            case DHTLIB_ERROR_TIMEOUT_A:
-              m="Time out A error";
-              break;
-            case DHTLIB_ERROR_TIMEOUT_B:
-              m="Time out B error";
-              break;
-            case DHTLIB_ERROR_TIMEOUT_C:
-              m="Time out C error";
-              break;
-            case DHTLIB_ERROR_TIMEOUT_D:
-              m="Time out D error";
-              break;
-            case DHTLIB_ERROR_SENSOR_NOT_READY:
-              m="Sensor not ready";
-              break;
-            case DHTLIB_ERROR_BIT_SHIFT:
-              m="Bit shift error";
-              break;
-            case DHTLIB_WAITING_FOR_READ:
-              m="Waiting for read";
-              break;
-            default:
-              m="Unknown";
-              break;
-          }
-
-          ESP_LOGE(TAG, "Erreur DHT n°%d: %s %d", i, m, status);
-
-          // error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
-          // dhtTH_V[i].readInterval=dhtTH_V[i].dht.getMinimumSamplingPeriod();
+        if (!dhtTH_V[i].dht->readTempAndHumidity(temp_hum_val)) {
+          ESP_LOGE(TAG, "Erreur DHT n°%d: cant't read", i);
+        } else if (temp_hum_val[0]==0 && temp_hum_val[1]==0) {
+          ESP_LOGE(TAG, "Erreur DHT n°%d: t=0 & h=0", i);
         } else {
-          float h= dhtTH_V[i].dht->getHumidity();
-          float t= dhtTH_V[i].dht->getTemperature();
-
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=0;
-          // dhtTH_V[i].readInterval=DHT_READ_INTERVAL;
 
-          dhtTH_V[i].temperature=t;
-          dhtTH_V[i].humidity=h;
+          dhtTH_V[i].temperature=temp_hum_val[1];
+          dhtTH_V[i].humidity=temp_hum_val[0];
           dhtTH_V[i].lastReadOk=currentMillis;
 
           zbTempSensor_V[i].zbTempSensor->setTemperature(dhtTH_V[i].temperature);
@@ -198,7 +157,6 @@ static void dht_reading(void *arg) {
         if (currentMillis - dhtTH_V[i].lastReadOk > 10000) {
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
         }
-      // }
     }
 
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
@@ -276,47 +234,39 @@ void setup() {
   }
 
   // Init sensor with DHT22 model (compatibility with AM2302B)
+  Wire.begin();
   for (int i=0; i<NumberOfDht; i++) {
     dhtTH_V[i].errorIndex=i;
     
     if(i==0){
       pinMode(DHTPIN_0, INPUT);
-      // dhtTH_V[i].dht.setup(DHTPIN_0, DHTTYPE);DHTNEW mySensor(5)
-      dhtTH_V[i].dht=new DHTNEW(DHTPIN_0);
+      dhtTH_V[i].dht=new DHT(DHTPIN_0, DHTTYPE);
     }
     if(i==1){
       pinMode(DHTPIN_1, INPUT);
-      // dhtTH_V[i].dht.setup(DHTPIN_1, DHTTYPE);
-      dhtTH_V[i].dht=new DHTNEW(DHTPIN_1);
+      dhtTH_V[i].dht=new DHT(DHTPIN_1, DHTTYPE);
     }
     if(i==2){
       pinMode(DHTPIN_2, INPUT);
-      // dhtTH_V[i].dht.setup(DHTPIN_2, DHTTYPE);
-      dhtTH_V[i].dht=new DHTNEW(DHTPIN_2);
+      dhtTH_V[i].dht=new DHT(DHTPIN_2, DHTTYPE);
     }
     if(i==3){
       pinMode(DHTPIN_3, INPUT);
-      // dhtTH_V[i].dht.setup(DHTPIN_3, DHTTYPE);
-      dhtTH_V[i].dht=new DHTNEW(DHTPIN_3);
+      dhtTH_V[i].dht=new DHT(DHTPIN_3, DHTTYPE);
     }
     if(i==4){
       pinMode(DHTPIN_4, INPUT);
-      // dhtTH_V[i].dht.setup(DHTPIN_4, DHTTYPE);
-      dhtTH_V[i].dht=new DHTNEW(DHTPIN_4);
+      dhtTH_V[i].dht=new DHT(DHTPIN_4, DHTTYPE);
     }
     if(i==5){
       pinMode(DHTPIN_5, INPUT);
-      // dhtTH_V[i].dht.setup(DHTPIN_5, DHTTYPE);
-      dhtTH_V[i].dht=new DHTNEW(DHTPIN_5);
+      dhtTH_V[i].dht=new DHT(DHTPIN_5, DHTTYPE);
     }
 
-    
-    dhtTH_V[i].dht->setType(22);
+    dhtTH_V[i].dht->begin();
 
     ESP_LOGI(TAG, "Sensor n°%d initialised!", i);
   }
-
-  // ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dhtTH_V[0].dht.getMinimumSamplingPeriod());
 
   // Init voltage reader
   zmpt101b.emon.voltage(ZMPT101BPIN_1, 230, 2);  // Voltage: input pin, calibration, phase_shift (2=>50hz, 1.7=>60hz)
