@@ -60,6 +60,7 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
 #include <dhtnew.h>
+#define DHTTYPE 22   // DHT 22  (AM2302)
 
 struct zbTempSensor_S {
   ZigbeeTempSensor* zbTempSensor;
@@ -218,7 +219,7 @@ static void ZMPT101B_reading(void *arg) {
 
     if(millis()>start+10000){
     
-      if(Vrms<30){
+      if(Vrms<50){
         ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(false);
@@ -311,7 +312,7 @@ void setup() {
     }
 
     
-    dhtTH_V[i].dht->setType(22);
+    dhtTH_V[i].dht->setType(DHTTYPE);
 
     ESP_LOGI(TAG, "Sensor n°%d initialised!", i);
   }
