@@ -176,7 +176,7 @@ static void ZMPT101B_reading(void *arg) {
 
     if(millis()>start+10000){
     
-      if(Vrms<30){
+      if(Vrms<50){
         ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(false);
@@ -234,7 +234,7 @@ void setup() {
   }
 
   // Init sensor with DHT22 model (compatibility with AM2302B)
-  Wire.begin();
+  // Wire.begin();
   for (int i=0; i<NumberOfDht; i++) {
     dhtTH_V[i].errorIndex=i;
     
