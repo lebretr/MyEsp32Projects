@@ -19,7 +19,9 @@ public:
 
   DHTRL(uint8_t pin);
   
-  int read();
+  int      read();
+  float    getHumidity()                 { return _humidity; };
+  float    getTemperature()              { return _temperature; };
 
   float temperature=0;
   float humidity=0;
@@ -27,4 +29,6 @@ public:
 
 private:
   uint8_t  _dataPin           = 0;
+  float _temperature=0;
+  float _humidity=0;
 };

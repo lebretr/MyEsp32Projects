@@ -1,5 +1,3 @@
-
-
 #include "DHTRL.h"
 
 DHTRL::DHTRL(uint8_t pin)
@@ -104,14 +102,14 @@ int DHTRL::read() {
   uint16_t rawHumidity = (bits[0] << 8) | bits[1];
   uint16_t rawTemp = (bits[2] << 8) | bits[3];
   
-  this->humidity = rawHumidity * 0.1;
+  this->_humidity = rawHumidity * 0.1;
   
   // Vérifier le bit de signe pour la température
   if(rawTemp & 0x8000) {
     rawTemp &= 0x7FFF;
-    this->temperature = rawTemp * -0.1;
+    this->_temperature = rawTemp * -0.1;
   } else {
-    this->temperature = rawTemp * 0.1;
+    this->_temperature = rawTemp * 0.1;
   }
   
   this->isValid = true;
