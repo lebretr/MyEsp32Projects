@@ -59,8 +59,8 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
-#include <DHTesp.h>
-#define DHTTYPE DHTesp::DHT22 
+#include <dhtnew.h>
+#define DHTTYPE 22   // DHT 22  (AM2302)
 
 struct zbTempSensor_S {
   ZigbeeTempSensor* zbTempSensor;
@@ -70,11 +70,12 @@ struct zbTempSensor_S {
 zbTempSensor_S zbTempSensor_V[NUMBER_OF_DHT_USED] ;
 
 struct dhtTH_S {
-  DHTesp dht;
+  DHTNEW* dht;  //DHTNEW mySensor(5);   //  ESP 16    UNO 5    MKR1010 5
   float temperature;
   float humidity;
-  int readInterval = DHT_READ_INTERVAL;
-  unsigned long lastDHTRead = 0;
+  unsigned long lastReadOk=0;
+  // int readInterval = DHT_READ_INTERVAL;
+  // unsigned long lastDHTRead = 0;
   int errorIndex;
 } dhtTH_R;
 
@@ -121,30 +122,58 @@ bool isHumChanged(float current, float previous) {
 static void dht_reading(void *arg) {
 
   static const TickType_t xDelay = pdMS_TO_TICKS(2000); // Attendre l'intervalle minimum requis
-  // static const TickType_t xDelay = pdMS_TO_TICKS(dhtTH_V[0].dht.getMinimumSamplingPeriod());
+  static const TickType_t xDelay100 = pdMS_TO_TICKS(100);
 
   for (;;) {
     unsigned long currentMillis = millis();
     
     for (int i=0; i<NumberOfDht; i++) {
-      if (currentMillis - dhtTH_V[i].lastDHTRead >= DHT_READ_INTERVAL) {
-        dhtTH_V[i].lastDHTRead = currentMillis;
-
-        // Read data from sensor
-        TempAndHumidity data = dhtTH_V[i].dht.getTempAndHumidity();
-    
         // check the reading status
-        if (dhtTH_V[i].dht.getStatus() != 0) {
-          ESP_LOGE(TAG, "Erreur DHT n°%d: %s", i, dhtTH_V[i].dht.getStatusString());
+        int status = dhtTH_V[i].dht->read();
+        if (status != DHTLIB_OK) {
 
-          error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
-          dhtTH_V[i].readInterval=dhtTH_V[i].dht.getMinimumSamplingPeriod();
+          char* m;
+          switch (status)
+          {
+            case DHTLIB_ERROR_CHECKSUM:
+              m="Checksum error";
+              break;
+            case DHTLIB_ERROR_TIMEOUT_A:
+              m="Time out A error";
+              break;
+            case DHTLIB_ERROR_TIMEOUT_B:
+              m="Time out B error";
+              break;
+            case DHTLIB_ERROR_TIMEOUT_C:
+              m="Time out C error";
+              break;
+            case DHTLIB_ERROR_TIMEOUT_D:
+              m="Time out D error";
+              break;
+            case DHTLIB_ERROR_SENSOR_NOT_READY:
+              m="Sensor not ready";
+              break;
+            case DHTLIB_ERROR_BIT_SHIFT:
+              m="Bit shift error";
+              break;
+            case DHTLIB_WAITING_FOR_READ:
+              m="Waiting for read";
+              break;
+            default:
+              m="Unknown";
+              break;
+          }
+
+          ESP_LOGE(TAG, "Erreur DHT n°%d: %s %d", i, m, status);
         } else {
-          error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=0;
-          dhtTH_V[i].readInterval=DHT_READ_INTERVAL;
+          float h= dhtTH_V[i].dht->getHumidity();
+          float t= dhtTH_V[i].dht->getTemperature();
 
-          dhtTH_V[i].temperature=data.temperature;
-          dhtTH_V[i].humidity=data.humidity;
+          error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=0;
+
+          dhtTH_V[i].temperature=t;
+          dhtTH_V[i].humidity=h;
+          dhtTH_V[i].lastReadOk=currentMillis;
 
           zbTempSensor_V[i].zbTempSensor->setTemperature(dhtTH_V[i].temperature);
           zbTempSensor_V[i].zbTempSensor->setHumidity(dhtTH_V[i].humidity);
@@ -155,7 +184,12 @@ static void dht_reading(void *arg) {
             zbTempSensor_V[i].zbTempSensor->setHumidityReporting(MIN_REPORT_INTERVAL_SEC, MAX_REPORT_INTERVAL_SEC, HUMIDITY_SENSIBILITY);
           }
         }
-      }
+
+        if (currentMillis - dhtTH_V[i].lastReadOk > 10000) {
+          error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
+        }
+
+        vTaskDelay(xDelay100);
     }
 
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
@@ -175,7 +209,7 @@ static void ZMPT101B_reading(void *arg) {
 
     if(millis()>start+10000){
     
-      if(Vrms<30){
+      if(Vrms<50){
         ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(false);
@@ -188,12 +222,6 @@ static void ZMPT101B_reading(void *arg) {
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(true);
       }
-
-      // if(int(Vrms) % 2 ==0 ){
-      //   zbOutlet.setState(true);
-      // }else{
-      //   zbOutlet.setState(false);
-      // }
     }
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
   }
@@ -211,13 +239,8 @@ static void error_code_sending(void *arg) {
   for (;;) {
     unsigned long ERROR_CODE=0;
     for (int i=0; i<NumberOfDevices; i++) {
-      ERROR_CODE += (error_I.device_ERROR_CODE[i] * pow(10 , i));    
-
-      // int t=error_I.device_ERROR_CODE[i] * pow(10 , i);
-      // ESP_LOGI(TAG, "ERROR_CODE : %d %d %d %lu",i , error_I.device_ERROR_CODE[i], t, ERROR_CODE );
+      ERROR_CODE += (error_I.device_ERROR_CODE[i] * pow(10 , i));
     }
-    
-    // ESP_LOGI(TAG, "ERROR_CODE : %lu",ERROR_CODE);
 
     zbAnalogDeviceError.setAnalogInput(ERROR_CODE);
 
@@ -243,37 +266,39 @@ void setup() {
     dhtTH_V[i].errorIndex=i;
     
     if(i==0){
-      pinMode(DHTPIN_0, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_0, DHTTYPE);
+      pinMode(DHTPIN_0, INPUT_PULLUP);
+      dhtTH_V[i].dht=new DHTNEW(DHTPIN_0);
     }
     if(i==1){
-      pinMode(DHTPIN_1, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_1, DHTTYPE);
+      pinMode(DHTPIN_1, INPUT_PULLUP);
+      dhtTH_V[i].dht=new DHTNEW(DHTPIN_1);
     }
     if(i==2){
-      pinMode(DHTPIN_2, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_2, DHTTYPE);
+      pinMode(DHTPIN_2, INPUT_PULLUP);
+      dhtTH_V[i].dht=new DHTNEW(DHTPIN_2);
     }
     if(i==3){
-      pinMode(DHTPIN_3, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_3, DHTTYPE);
+      pinMode(DHTPIN_3, INPUT_PULLUP);
+      dhtTH_V[i].dht=new DHTNEW(DHTPIN_3);
     }
     if(i==4){
-      pinMode(DHTPIN_4, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_4, DHTTYPE);
+      pinMode(DHTPIN_4, INPUT_PULLUP);
+      dhtTH_V[i].dht=new DHTNEW(DHTPIN_4);
     }
     if(i==5){
-      pinMode(DHTPIN_5, INPUT);
-      dhtTH_V[i].dht.setup(DHTPIN_5, DHTTYPE);
+      pinMode(DHTPIN_5, INPUT_PULLUP);
+      dhtTH_V[i].dht=new DHTNEW(DHTPIN_5);
     }
+
+    
+    dhtTH_V[i].dht->setType(DHTTYPE);
 
     ESP_LOGI(TAG, "Sensor n°%d initialised!", i);
   }
 
-  ESP_LOGI(TAG, "Delay between 2 reads: %d ms", dhtTH_V[0].dht.getMinimumSamplingPeriod());
-
   // Init voltage reader
   zmpt101b.emon.voltage(ZMPT101BPIN_1, 230, 2);  // Voltage: input pin, calibration, phase_shift (2=>50hz, 1.7=>60hz)
+  zmpt101b.emon.current(FAKECURRENTPIN_1, 111.1);       // Current: input pin, calibration.
 
   zmpt101b.errorIndex=int(NumberOfDevices)-1; //zmpt101b is the last device 
 
