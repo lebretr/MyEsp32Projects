@@ -188,7 +188,8 @@ static void dht_reading(void *arg) {
         if (currentMillis - dhtTH_V[i].lastReadOk > 10000) {
           error_I.device_ERROR_CODE[dhtTH_V[i].errorIndex]=1;
         }
-        vTaskDelay(xDelay100)
+
+        vTaskDelay(xDelay100);
     }
 
     vTaskDelay(xDelay); // Prefer vTaskDelay to delay() + yield()
@@ -294,7 +295,7 @@ void setup() {
 
     ESP_LOGI(TAG, "Sensor n°%d initialised!", i);
   }
-  
+
   // Init voltage reader
   zmpt101b.emon.voltage(ZMPT101BPIN_1, 230, 2);  // Voltage: input pin, calibration, phase_shift (2=>50hz, 1.7=>60hz)
   zmpt101b.emon.current(FAKECURRENTPIN_1, 111.1);       // Current: input pin, calibration.
