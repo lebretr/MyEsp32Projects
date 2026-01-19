@@ -59,6 +59,9 @@ ZigbeeAnalog zbAnalogDevicePid = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER);
 
 ZigbeeAnalog zbAnalogDeviceError = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 1);
 
+ZigbeeAnalog zbAnalogDeviceVoltage = ZigbeeAnalog(ANALOG_DEVICE_ENDPOINT_NUMBER + 2);
+
+
 #include "DHTRL.h"
 #define DHTTYPE 22   // DHT 22  (AM2302)
 
@@ -211,17 +214,19 @@ static void ZMPT101B_reading(void *arg) {
     double Vrms = zmpt101b.emon.Vrms;
 
     if(millis()>start+10000){
+      int volt=static_cast<int>(Vrms);
+      zbAnalogDeviceVoltage.setAnalogInput(volt);
     
-      if(Vrms<50){
-        ESP_LOGI(TAG, "AC POWER OFF! : %f",Vrms);
+      if(volt<110){
+        ESP_LOGI(TAG, "AC POWER OFF! : %d",volt);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(false);
-      }else if(Vrms>250){
-        ESP_LOGE(TAG, "AC ERREUR? : %f",Vrms);
+      }else if(volt>250){
+        ESP_LOGE(TAG, "AC ERREUR? : %d",volt);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=9;
         zbOutlet.setState(true);
       }else{
-        ESP_LOGI(TAG, "AC ON : %f",Vrms);
+        ESP_LOGI(TAG, "AC ON : %d",volt);
         error_I.device_ERROR_CODE[zmpt101b.errorIndex]=0;
         zbOutlet.setState(true);
       }
@@ -355,6 +360,14 @@ void setup() {
 
   Zigbee.addEndpoint(&zbAnalogDeviceError);
 
+  // Zigbee Sensor to track restart (crash, ...)
+  zbAnalogDeviceVoltage.addAnalogInput();
+  zbAnalogDeviceVoltage.setAnalogInputApplication(ESP_ZB_ZCL_AI_CURRENT_OTHER);
+  zbAnalogDeviceVoltage.setAnalogInputDescription("Volt");
+  zbAnalogDeviceVoltage.setAnalogInputResolution(1);
+
+  Zigbee.addEndpoint(&zbAnalogDeviceVoltage);
+
   ESP_LOGI(TAG, "Starting Zigbee...");
   // When all EPs are registered, start Zigbee in End Device mode
   if (!Zigbee.begin(ZIGBEE_ROLE)) {
@@ -430,6 +443,7 @@ void setup() {
 
   zbAnalogDevicePid.setAnalogInputReporting(0,MAX_REPORT_INTERVAL_SEC,0);
   zbAnalogDeviceError.setAnalogInputReporting(0,MAX_REPORT_INTERVAL_SEC,0);
+  zbAnalogDeviceVoltage.setAnalogInputReporting(0,MAX_REPORT_INTERVAL_SEC,1);
 
   ESP_LOGI(TAG, "=== Initialization complete ===\n");
 }
