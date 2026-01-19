@@ -360,10 +360,10 @@ void setup() {
 
   Zigbee.addEndpoint(&zbAnalogDeviceError);
 
-  // Zigbee Sensor to track restart (crash, ...)
+  // Zigbee Sensor to track the outlet's voltage 
   zbAnalogDeviceVoltage.addAnalogInput();
   zbAnalogDeviceVoltage.setAnalogInputApplication(ESP_ZB_ZCL_AI_CURRENT_OTHER);
-  zbAnalogDeviceVoltage.setAnalogInputDescription("Volt");
+  zbAnalogDeviceVoltage.setAnalogInputDescription("Voltage");
   zbAnalogDeviceVoltage.setAnalogInputResolution(1);
 
   Zigbee.addEndpoint(&zbAnalogDeviceVoltage);
@@ -465,8 +465,9 @@ void loop() {
   //to follow ESP32 reboot
   if(startStatus==0){
     float randNumber = myfAbs(esp_random()); 
-    ESP_LOGI(TAG, "Pid: %f", (double)randNumber);
-    zbAnalogDevicePid.setAnalogInput(randNumber);
+    int pid=static_cast<int>(randNumber);
+    ESP_LOGI(TAG, "Pid: %d", pid);
+    zbAnalogDevicePid.setAnalogInput(pid);
 
     zbAnalogDeviceError.setAnalogInput(0);
 
